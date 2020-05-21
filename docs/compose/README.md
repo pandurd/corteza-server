@@ -609,6 +609,7 @@ Compose pages
 | title | string | POST | Title | N/A | YES |
 | handle | string | POST | Handle | N/A | NO |
 | description | string | POST | Description | N/A | NO |
+| weight | int | POST | Page tree weight | N/A | NO |
 | visible | bool | POST | Visible in navigation | N/A | NO |
 | blocks | sqlxTypes.JSONText | POST | Blocks JSON | N/A | NO |
 | namespaceID | uint64 | PATH | Namespace ID | N/A | YES |
