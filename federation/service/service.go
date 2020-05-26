@@ -2,16 +2,12 @@ package service
 
 import (
 	"context"
-	"errors"
 	"time"
-
-	"github.com/cortezaproject/corteza-server/pkg/actionlog"
-	actionlogRepository "github.com/cortezaproject/corteza-server/pkg/actionlog/repository"
-	"github.com/cortezaproject/corteza-server/pkg/corredor"
 
 	"go.uber.org/zap"
 
 	"github.com/cortezaproject/corteza-server/compose/repository"
+	composeService "github.com/cortezaproject/corteza-server/compose/service"
 	"github.com/cortezaproject/corteza-server/compose/types"
 	"github.com/cortezaproject/corteza-server/pkg/app/options"
 	"github.com/cortezaproject/corteza-server/pkg/auth"
@@ -21,7 +17,6 @@ import (
 	"github.com/cortezaproject/corteza-server/pkg/store"
 	"github.com/cortezaproject/corteza-server/pkg/store/minio"
 	"github.com/cortezaproject/corteza-server/pkg/store/plain"
-	systemProto "github.com/cortezaproject/corteza-server/system/proto"
 )
 
 type (
@@ -31,7 +26,6 @@ type (
 	}
 
 	Config struct {
-		ActionLog        options.ActionLogOpt
 		Storage          options.StorageOpt
 		GRPCClientSystem options.GRPCServerOpt
 	}
@@ -47,8 +41,6 @@ var (
 
 	DefaultLogger *zap.Logger
 
-	DefaultActionlog actionlog.Recorder
-
 	DefaultSettings settings.Service
 
 	// DefaultPermissions Retrieves & stores permissions
@@ -60,17 +52,18 @@ var (
 	// CurrentSettings represents current compose settings
 	CurrentSettings = &types.Settings{}
 
-	DefaultNamespace     NamespaceService
-	DefaultImportSession ImportSessionService
-	DefaultRecord        RecordService
-	DefaultModule        ModuleService
-	DefaultChart         ChartService
-	DefaultPage          PageService
-	DefaultAttachment    AttachmentService
-	DefaultNotification  *notification
+	// DefaultModule ModuleService
+	// DefaultRecord RecordService
 
-	DefaultSystemUser *systemUser
-	DefaultSystemRole *systemRole
+	// currently using compose repository access
+	ComposeRecordService    composeService.RecordService
+	ComposeModuleService    composeService.ModuleService
+	ComposeNamespaceService composeService.NamespaceService
+
+	// DefaultNotification *notification
+
+	// DefaultSystemUser *systemUser
+	// DefaultSystemRole *systemRole
 )
 
 // Initializes compose-only services
@@ -78,23 +71,6 @@ func Initialize(ctx context.Context, log *zap.Logger, c Config) (err error) {
 	var db = repository.DB(ctx)
 
 	DefaultLogger = log.Named("service")
-
-	{
-		tee := log
-		policy := actionlog.MakeProductionPolicy()
-		if c.ActionLog.Debug {
-			tee = zap.NewNop()
-			policy = actionlog.MakeDebugPolicy()
-		}
-
-		DefaultActionlog = actionlog.NewService(
-			// will log directly to system schema for now
-			actionlogRepository.Mysql(repository.DB(ctx).Quiet(), "sys_actionlog"),
-			log,
-			tee,
-			policy,
-		)
-	}
 
 	if DefaultPermissions == nil {
 		// Do not override permissions service stored under DefaultPermissions
@@ -112,7 +88,7 @@ func Initialize(ctx context.Context, log *zap.Logger, c Config) (err error) {
 	)
 
 	if DefaultStore == nil {
-		const svcPath = "compose"
+		const svcPath = "federation"
 		if c.Storage.MinioEndpoint != "" {
 			var bucket = svcPath
 			if c.Storage.MinioBucket != "" {
@@ -146,25 +122,13 @@ func Initialize(ctx context.Context, log *zap.Logger, c Config) (err error) {
 		}
 	}
 
-	DefaultNamespace = Namespace()
-	DefaultModule = Module()
+	// DefaultModule = Module()
+	// DefaultRecord = Record()
 
-	{
-		systemClientConn, err := NewSystemGRPCClient(ctx, c.GRPCClientSystem, DefaultLogger)
-		if err != nil {
-			return err
-		}
-
-		DefaultSystemUser = SystemUser(systemProto.NewUsersClient(systemClientConn))
-		DefaultSystemRole = SystemRole(systemProto.NewRolesClient(systemClientConn))
-	}
-
-	DefaultImportSession = ImportSession()
-	DefaultRecord = Record()
-	DefaultPage = Page()
-	DefaultChart = Chart()
-	DefaultNotification = Notification()
-	DefaultAttachment = Attachment(DefaultStore)
+	// temporarily using compose service for fetching from db
+	ComposeRecordService = composeService.Record()
+	ComposeModuleService = composeService.Module()
+	ComposeNamespaceService = composeService.Namespace()
 
 	RegisterIteratorProviders()
 
@@ -183,40 +147,11 @@ func Activate(ctx context.Context) (err error) {
 
 func Watchers(ctx context.Context) {
 	// Reloading permissions on change
-	DefaultPermissions.Watch(ctx)
+	// DefaultPermissions.Watch(ctx)
 }
 
 func RegisterIteratorProviders() {
 	// Register resource finders on iterator
-	corredor.Service().RegisterIteratorProvider(
-		"compose:record",
-		func(ctx context.Context, f map[string]string, h eventbus.HandlerFn, action string) error {
-			rf := types.RecordFilter{
-				Query: f["query"],
-				Sort:  f["sort"],
-			}
-
-			rf.ParsePagination(f)
-
-			if nsLookup, has := f["namespace"]; !has {
-				return errors.New("namespace for record iteration filter not defined")
-			} else if ns, err := DefaultNamespace.With(ctx).FindByAny(nsLookup); err != nil {
-				return err
-			} else {
-				rf.NamespaceID = ns.ID
-			}
-
-			if mLookup, has := f["module"]; !has {
-				return errors.New("module for record iteration filter not defined")
-			} else if m, err := DefaultModule.With(ctx).FindByAny(rf.NamespaceID, mLookup); err != nil {
-				return err
-			} else {
-				rf.ModuleID = m.ID
-			}
-
-			return DefaultRecord.With(ctx).Iterator(rf, h, action)
-		},
-	)
 }
 
 // Data is stale when new date does not match updatedAt or createdAt (before first update)

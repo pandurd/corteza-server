@@ -1,11 +1,12 @@
 package cli
 
 import (
+	"os"
+
 	"github.com/cortezaproject/corteza-server/pkg/logger"
 	"github.com/cortezaproject/corteza-server/pkg/version"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
-	"os"
 )
 
 var (
@@ -126,3 +127,20 @@ func VersionCommand() *cobra.Command {
 
 	return &cfCmd
 }
+
+// func SyncFederatedStructureCommand(syncEfn func() error) *cobra.Command {
+// 	// Make a copies
+// 	var sCmd = syncFederatedStructureCommand
+
+// 	sCmd.RunE = func(cmd *cobra.Command, args []string) (err error) {
+// 		if _, set := os.LookupEnv("LOG_LEVEL"); !set {
+// 			// If LOG_LEVEL is not explicitly set, let's
+// 			// set it to INFO so that it
+// 			logger.DefaultLevel.SetLevel(zap.InfoLevel)
+// 		}
+
+// 		return syncEfn()
+// 	}
+
+// 	return &sCmd
+// }

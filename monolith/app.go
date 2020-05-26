@@ -2,6 +2,9 @@ package monolith
 
 import (
 	"context"
+	"strings"
+
+	"github.com/cortezaproject/corteza-server/federation"
 	"github.com/cortezaproject/corteza-server/pkg/webapp"
 	"github.com/go-chi/chi"
 	_ "github.com/joho/godotenv/autoload"
@@ -9,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"strings"
 
 	"github.com/cortezaproject/corteza-server/compose"
 	"github.com/cortezaproject/corteza-server/corteza"
@@ -22,11 +24,12 @@ import (
 
 type (
 	App struct {
-		Opts      *app.Options
-		Core      *corteza.App
-		System    *system.App
-		Compose   *compose.App
-		Messaging *messaging.App
+		Opts       *app.Options
+		Core       *corteza.App
+		System     *system.App
+		Compose    *compose.App
+		Messaging  *messaging.App
+		Federation *federation.App
 	}
 )
 
@@ -47,6 +50,7 @@ func (monolith *App) Setup(log *zap.Logger, opts *app.Options) (err error) {
 		monolith.System,
 		monolith.Compose,
 		monolith.Messaging,
+		monolith.Federation,
 	)
 
 	if err != nil {
@@ -80,6 +84,7 @@ func (monolith App) Initialize(ctx context.Context) (err error) {
 		monolith.System,
 		monolith.Compose,
 		monolith.Messaging,
+		monolith.Federation,
 	)
 
 	if err != nil {
@@ -98,6 +103,7 @@ func (monolith *App) Activate(ctx context.Context) (err error) {
 		monolith.System,
 		monolith.Compose,
 		monolith.Messaging,
+		monolith.Federation,
 	)
 
 	if err != nil {
@@ -138,6 +144,10 @@ func (monolith *App) MountApiRoutes(r chi.Router) {
 			r.Route("/messaging", func(r chi.Router) {
 				monolith.Messaging.MountApiRoutes(r)
 			})
+
+			r.Route("/federation", func(r chi.Router) {
+				monolith.Federation.MountApiRoutes(r)
+			})
 		})
 	}
 
@@ -170,13 +180,21 @@ func (monolith *App) RegisterCliCommands(rootCmd *cobra.Command) {
 		Short:   "Commands from compose service",
 	}
 
+	federationCmd := &cobra.Command{
+		Use:     "federation",
+		Aliases: []string{"fed"},
+		Short:   "Commands from federation service",
+	}
+
 	monolith.System.RegisterCliCommands(systemCmd)
 	monolith.Compose.RegisterCliCommands(composeCmd)
 	monolith.Messaging.RegisterCliCommands(messagingCmd)
+	monolith.Federation.RegisterCliCommands(federationCmd)
 
 	rootCmd.AddCommand(
 		systemCmd,
 		composeCmd,
 		messagingCmd,
+		federationCmd,
 	)
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/cortezaproject/corteza-server/compose"
 	"github.com/cortezaproject/corteza-server/corteza"
+	"github.com/cortezaproject/corteza-server/federation"
 	"github.com/cortezaproject/corteza-server/messaging"
 	"github.com/cortezaproject/corteza-server/monolith"
 	"github.com/cortezaproject/corteza-server/pkg/app"
@@ -18,9 +19,10 @@ func main() {
 		app.NewOptions(),
 		&corteza.App{},
 		&monolith.App{
-			System:    &system.App{},
-			Compose:   &compose.App{},
-			Messaging: &messaging.App{},
+			System:     &system.App{},
+			Compose:    &compose.App{},
+			Messaging:  &messaging.App{},
+			Federation: &federation.App{},
 		},
 	)
 }

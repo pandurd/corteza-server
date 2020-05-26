@@ -1,0 +1,57 @@
+#
+# Federation global settings
+#
+settings:
+  # sync furation
+  sync: 10s
+
+
+#
+# Servers config
+#
+servers:
+  - id: 48241cd7-bd92-4df9-9521-a722d687bf53
+    uri: localhost:8084
+    name: Federation server origin
+
+#
+# Sharing config
+#
+# This is where the information about federated modules reside,
+# use on origin
+#
+modules:
+- handle: federation_test_module
+  namespace:
+    id: 145125472630472705
+    handle: crm
+  fields:
+    - TextInput
+    - CheckboxInput
+
+#
+# Mapping info
+#
+# This is where the information about federated modules and 
+# fields reside, use on destination
+#
+mapped:
+- source:
+    id: 145126041529090049
+    namespace: 145125472630472705
+    handle: federation_test_module
+    name: Federation Test Module
+  destination:
+    id: 456
+    handle: federation_test_destination_module
+    name: Federation Test Destination Module
+  source_server:
+    id: 48241cd7-bd92-4df9-9521-a722d687bf53
+  fields:
+    - source: TextInput
+      destination: StaticInput1
+    - source: CheckboxInput
+      destination: FederatedInput2
+    - source: DateTimeInput
+      destination: FederatedInput1
+      cast: string
