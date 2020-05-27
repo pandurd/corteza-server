@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -14,12 +15,60 @@ import (
 	"time"
 
 	"github.com/cortezaproject/corteza-server/federation/config"
+	"github.com/cortezaproject/corteza-server/federation/rest"
+	"github.com/cortezaproject/corteza-server/federation/types"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/cobra"
 )
 
-func SyncRecords(ctx context.Context, moduleList []*config.ConfigStructureMapped) {
+const (
+	FederationRecordStatusCreated FederationRecordStatus = iota
+	FederationRecordStatusUpdated
+	FederationRecordStatusDeleted
+	FederationRecordStatusUnknown
+)
 
+type (
+	FederationRecordStatus int
+
+	FederationMappingContext struct {
+		Status            FederationRecordStatus
+		SourceRecord      *types.FederatedRecord
+		DestinationRecord *types.FederatedRecord
+		Mapping           interface{}
+	}
+
+	federationMapper interface {
+		GetStatus(record *types.FederatedRecord) error
+		Transform(context FederationMappingContext) error
+	}
+
+	FMapper struct{}
+)
+
+func (fm *FMapper) GetStatus(record *types.FederatedRecord) (FederationRecordStatus, error) {
+	createdAt := !record.CreatedAt.IsZero()
+	updatedAt := record.UpdatedAt != nil && !record.UpdatedAt.IsZero()
+	deletedAt := record.DeletedAt != nil && !record.DeletedAt.IsZero()
+
+	switch {
+	case createdAt && !updatedAt && !deletedAt:
+		return FederationRecordStatusCreated, nil
+	case createdAt && updatedAt && !deletedAt:
+		return FederationRecordStatusUpdated, nil
+	case deletedAt:
+		return FederationRecordStatusDeleted, nil
+	}
+
+	return FederationRecordStatusUnknown, errors.New("this should not happen")
+}
+
+func (fm *FMapper) Transform(context FederationMappingContext) (*types.FederatedRecord, error) {
+	// use status of the record
+	// fetch record from db
+	// merge with mapping data
+	// return federatedrecord
+	return nil, nil
 }
 
 func SyncData() *cobra.Command {
@@ -33,6 +82,7 @@ func SyncData() *cobra.Command {
 			// go through mapped: and fetch data
 
 			// ctx, cancel := context.WithCancel(context.Background())
+			ctx := context.TODO()
 
 			var lastSynced int64 = 0
 			spew.Dump(lastSynced)
@@ -51,6 +101,8 @@ func SyncData() *cobra.Command {
 			if err != nil {
 				panic(err)
 			}
+
+			federationRestService := rest.Record{}.New()
 
 			parser := config.Parser{
 				Config: dat,
@@ -81,6 +133,8 @@ func SyncData() *cobra.Command {
 			defer ticker.Stop()
 
 			federatedModuleList := federatedModuleHandleList.FindModules(federatedServer.ID)
+
+			fmapper := &FMapper{}
 
 			for {
 				for _, module := range federatedModuleList {
@@ -114,7 +168,34 @@ func SyncData() *cobra.Command {
 						return
 					}
 
-					log.Printf("Fetched response successfuly", string(responseData))
+					// unmarshal to FederatedRecord
+					responseRecord := &types.FederatedRecord{}
+
+					err = json.Unmarshal(responseData, &responseRecord)
+
+					recordSet, err := federationRestService.DecodeFilterPayload(ctx, responseData)
+
+					log.Printf("Fetched response successfuly")
+
+					if len(recordSet) == 0 {
+						log.Printf("No results to crunch, skipping")
+						break
+					}
+
+					for _, frec := range recordSet {
+						recordStatus, _ := fmapper.GetStatus(frec)
+						mappingContext := &FederationMappingContext{
+							Status:            recordStatus,
+							SourceRecord:      frec,
+							DestinationRecord: frec,
+							Mapping:           federatedModuleList,
+						}
+
+						spew.Dump(fmapper.Transform(*mappingContext))
+					}
+
+					// spew.Dump(recordSet)
+
 					lastSynced = time.Now().Unix()
 				}
 

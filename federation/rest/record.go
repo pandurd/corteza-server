@@ -22,9 +22,6 @@ var _ = errors.Wrap
 type (
 	recordPayload struct {
 		*types.FederatedRecord
-
-		// CanUpdateRecord bool `json:"canUpdateRecord"`
-		// CanDeleteRecord bool `json:"canDeleteRecord"`
 	}
 
 	recordSetPayload struct {
@@ -83,8 +80,6 @@ func (ctrl *Record) List(ctx context.Context, r *request.RecordList) (interface{
 
 	rf.Deleted = 1
 
-	spew.Dump(r.LastSynced.IsZero())
-
 	if !r.LastSynced.IsZero() {
 		mFormat := r.LastSynced.Format("2006-01-02 15:04:05")
 		rf.Query = fmt.Sprintf("createdAt >= '%s' OR updatedAt >= '%s' OR deletedAt >= '%s'", mFormat, mFormat, mFormat)
@@ -98,7 +93,16 @@ func (ctrl *Record) List(ctx context.Context, r *request.RecordList) (interface{
 
 	for _, r := range rr {
 		remappedRecord := &types.FederatedRecord{
-			*r,
+			ID:          r.ID,
+			ModuleID:    r.ModuleID,
+			NamespaceID: r.NamespaceID,
+			CreatedAt:   r.CreatedAt,
+			DeletedAt:   r.DeletedAt,
+			UpdatedAt:   r.UpdatedAt,
+			CreatedBy:   r.CreatedBy,
+			DeletedBy:   r.DeletedBy,
+			UpdatedBy:   r.UpdatedBy,
+			Values:      r.Values,
 		}
 
 		remappedList = append(remappedList, remappedRecord)
@@ -114,9 +118,6 @@ func (ctrl Record) makePayload(ctx context.Context, r *types.FederatedRecord, er
 
 	return &recordPayload{
 		FederatedRecord: r,
-
-		// CanUpdateRecord: ctrl.ac.CanUpdateRecord(ctx, m),
-		// CanDeleteRecord: ctrl.ac.CanDeleteRecord(ctx, m),
 	}, nil
 }
 
@@ -153,4 +154,22 @@ func (ctrl Record) handleValidationError(rve *composeTypes.RecordValueErrorSet) 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(rval)
 	}
+}
+
+func (ctrl Record) DecodeFilterPayload(ctx context.Context, payload []byte) (types.FederatedRecordSet, error) {
+	// federatedRecordPayload := &recordSetPayload{}
+
+	type Aux struct {
+		// Response map[string]interface{} `json:"response"`
+		Response struct {
+			Filter interface{}              `json:"filter"`
+			Set    types.FederatedRecordSet `json:"set"`
+		} `json:"response"`
+	}
+
+	aux := Aux{}
+
+	err := json.Unmarshal(payload, &aux)
+
+	return aux.Response.Set, err
 }
