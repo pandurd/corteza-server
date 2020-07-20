@@ -8,8 +8,6 @@ package permissions
 // Definitions file that controls how this file is generated:
 // pkg/permissions/types.yaml
 
-// 	Hello! This file is auto-generated.
-
 type (
 
 	// ResourceSet slice of Resource

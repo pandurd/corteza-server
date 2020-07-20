@@ -8,8 +8,6 @@ package settings
 // Definitions file that controls how this file is generated:
 // pkg/settings/types.yaml
 
-// 	Hello! This file is auto-generated.
-
 type (
 
 	// ValueSet slice of Value

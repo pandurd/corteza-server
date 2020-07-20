@@ -17,8 +17,6 @@ import (
 )
 {{ end }}
 
-// 	Hello! This file is auto-generated.
-
 type (
 {{ range $name, $set := .Types }}
 	// {{ $name }}Set slice of {{ $name }}

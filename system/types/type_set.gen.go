@@ -8,8 +8,6 @@ package types
 // Definitions file that controls how this file is generated:
 // system/types/types.yaml
 
-// 	Hello! This file is auto-generated.
-
 type (
 
 	// ApplicationSet slice of Application

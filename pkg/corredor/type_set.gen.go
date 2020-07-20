@@ -8,8 +8,6 @@ package corredor
 // Definitions file that controls how this file is generated:
 // pkg/corredor/types.yaml
 
-// 	Hello! This file is auto-generated.
-
 type (
 
 	// ScriptSet slice of Script
