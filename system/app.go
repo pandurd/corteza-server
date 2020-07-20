@@ -2,12 +2,12 @@ package system
 
 import (
 	"context"
+	"github.com/cortezaproject/corteza-server/corteza/repository/mysql/schema"
 	"github.com/cortezaproject/corteza-server/pkg/automation"
 
 	"github.com/go-chi/chi"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/spf13/cobra"
-	"github.com/titpetric/factory"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
@@ -17,7 +17,6 @@ import (
 	"github.com/cortezaproject/corteza-server/pkg/scheduler"
 	"github.com/cortezaproject/corteza-server/system/auth/external"
 	"github.com/cortezaproject/corteza-server/system/commands"
-	migrate "github.com/cortezaproject/corteza-server/system/db"
 	systemGRPC "github.com/cortezaproject/corteza-server/system/grpc"
 	"github.com/cortezaproject/corteza-server/system/proto"
 	"github.com/cortezaproject/corteza-server/system/rest"
@@ -50,8 +49,7 @@ func (app *App) Setup(log *zap.Logger, opts *app.Options) (err error) {
 }
 
 func (app *App) Upgrade(ctx context.Context) (err error) {
-	db := factory.Database.MustGet().With(ctx).Quiet()
-	err = migrate.Migrate(db, app.Log)
+	err = schema.ProvisionSystem(ctx, app.Opts.DB.DSN, func(_ int, msg string) { app.Log.Info(msg) })
 	if err != nil {
 		return
 	}

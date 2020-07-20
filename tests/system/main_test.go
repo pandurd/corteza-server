@@ -63,7 +63,7 @@ func db() *factory.DB {
 }
 
 func (app *TestApp) Initialize(ctx context.Context) (err error) {
-	service.DefaultPermissions = permissions.NewTestService(ctx, app.Log, db(), "compose_permission_rules")
+	service.DefaultPermissions = permissions.NewTestService(ctx, app.Log, db(), "sys_permission_rules")
 	return
 }
 

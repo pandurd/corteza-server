@@ -109,20 +109,6 @@ function types {
 	green "OK"
 }
 
-
-function database {
-	yellow "> database"
-	FOLDERS=$(find . -type d -wholename '*/schema/mysql')
-	for FOLDER in $FOLDERS; do
-		FOLDER=$(dirname $(dirname $FOLDER))
-		FOLDER=${FOLDER:2}
-		echo $FOLDER
-		cd $FOLDER && $GOPATH/bin/statik -p mysql -m -Z -f -src=schema/mysql && cd $_PWD
-	done
-	green "OK"
-}
-
-
 function provision {
 	yellow "> provision files"
 	for FOLDER in system compose messaging; do
@@ -205,9 +191,6 @@ function proto {
 case ${1:-"all"} in
   types)
     types
-    ;;
-  database)
-    database
     ;;
   provision)
     provision
