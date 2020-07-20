@@ -1,0 +1,8 @@
+types:
+  User:
+  Application:
+  Role:
+  Organisation:
+  Credentials:
+  Reminder:
+  Attachment:
