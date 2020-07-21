@@ -1,7 +1,12 @@
 package {{ .Package }}
 
-// This file is auto-generated from {{ .YAML }}
+// This file is auto-generated.
 //
+// Changes to this file may cause incorrect behavior and will be lost if
+// the code is regenerated.
+//
+// Definitions file that controls how this file is generated:
+// {{ .Source }}
 
 import (
 	"context"
@@ -15,7 +20,7 @@ import (
 
 	"github.com/cortezaproject/corteza-server/pkg/actionlog"
 {{- range $import := $.Import }}
-    {{ $import }}
+    {{ normalizeImport $import }}
 {{- end }}
 )
 

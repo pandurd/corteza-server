@@ -10,14 +10,16 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"text/template"
 )
 
 type (
 	// definitions are in multiple files and each definition
 	// should produce one output
 	actionsDef struct {
-		// Source file
-		Source string
+		App       string
+		Source    string
+		outputDir string
 
 		// List of imports
 		// Used only by generated file and not pre-generated-user-file
@@ -91,10 +93,6 @@ type (
 	}
 )
 
-const (
-	actionsTemplateFile = "codegen/v2/actionlog/*.go.tpl"
-)
-
 // Processes multiple action definitions
 func procActions() ([]*actionsDef, error) {
 	var (
@@ -129,6 +127,7 @@ func procActions() ([]*actionsDef, error) {
 			}
 
 			d.Source = m
+			d.outputDir = path.Dir(m)
 
 			dd = append(dd, d)
 			return nil
@@ -150,19 +149,6 @@ func actionNormalize(d *actionsDef) error {
 		Log:      "{err}",
 		Severity: "error",
 	}}, d.Errors...)
-
-	for i := range d.Import {
-		// Handle list of imports, adds quotes around each import
-		//
-		// If import string contains a space, assume import alias and
-		// quotes only the 2nd part
-		if strings.Contains(d.Import[i], " ") {
-			p := strings.SplitN(d.Import[i], " ", 2)
-			d.Import[i] = fmt.Sprintf(`%s "%s"`, p[0], p[1])
-		} else {
-			d.Import[i] = fmt.Sprintf(`"%s"`, d.Import[i])
-		}
-	}
 
 	// index known meta fields and sanitize types (no type => string type)
 	knownProps := map[string]bool{
@@ -296,4 +282,25 @@ func severityConstName(s string) string {
 	default:
 		return "actionlog.Error"
 	}
+}
+
+func genActions(tpl *template.Template, dd []*actionsDef) (err error) {
+	var (
+		// Will only be generated if file does not exist previously
+		tplActionsGen = tpl.Lookup("actions.gen.go.tpl")
+
+		dst string
+	)
+
+	for _, d := range dd {
+		// Generic code, actions for every resource goes to a separated file
+		dst = path.Join(d.outputDir, path.Base(d.Source)[:strings.LastIndex(path.Base(d.Source), ".")]+".gen.go")
+		err = goTemplate(dst, tplActionsGen, d)
+		if err != nil {
+			return
+		}
+
+	}
+
+	return nil
 }

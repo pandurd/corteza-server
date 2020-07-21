@@ -33,6 +33,8 @@ func Proc() {
 
 	if def.Actions, err = procActions(); err != nil {
 		cli.HandleError(err)
+	} else {
+		cli.HandleError(genActions(tpls, def.Actions))
 	}
 
 	if def.Events, err = procEvents(); err != nil {
