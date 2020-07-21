@@ -18,12 +18,6 @@ function green {
 	echo -e "\033[32m$@\033[39m"
 }
 
-function gofmt {
-	yellow "> go fmt ./..."
-	go fmt ./...
-	green "OK"
-}
-
 function provision {
 	yellow "> provision files"
 	for FOLDER in system compose messaging; do
@@ -31,45 +25,6 @@ function provision {
 	done
 	green "OK"
 }
-
-
-function events {
-  if [ ! -f "build/event-gen" ]; then
-		CGO_ENABLED=0 go build -o ./build/event-gen ./codegen/v2/events
-	fi
-
-	for SERVICE in system compose messaging; do
-	  yellow "> event files for ${SERVICE}"
-	  ./build/event-gen --service ${SERVICE}
-	done
-	green "OK"
-}
-
-
-function specs {
-	yellow "> specs"
-	if [ ! -f "build/gen-spec" ]; then
-		CGO_ENABLED=0 go build -o ./build/gen-spec codegen/v2/spec.go
-	fi
-	_PWD=$PWD
-	SPECS=$(find $PWD -name 'spec.json' | xargs -n1 dirname)
-	for SPEC in $SPECS; do
-		yellow "> spec $SPEC"
-		cd $SPEC && rm -rf spec && ../../build/gen-spec && cd $_PWD
-		green "OK"
-	done
-
-	for SPEC in $SPECS; do
-		SRC=$(basename $SPEC)
-		if [ -d "codegen/$SRC" ]; then
-			yellow "> README $SRC"
-			codegen/codegen.php $SRC
-			rsync -a codegen/common/ $SRC/
-			green "OK"
-		fi
-	done
-}
-
 
 function proto {
 	yellow "> proto"
@@ -107,23 +62,10 @@ case ${1:-"all"} in
   provision)
     provision
     ;;
-  specs)
-    specs
-    ;;
   proto)
     proto
     ;;
-  events)
-    events
-    ;;
   all)
-    types
-    database
     provision
-    specs
     proto
-    events
 esac
-
-# Always finish with fmt
-gofmt
