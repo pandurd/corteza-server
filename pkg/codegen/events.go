@@ -11,10 +11,6 @@ import (
 	"text/template"
 )
 
-const (
-	templateFiles = "codegen/v2/events/*.tpl"
-)
-
 type (
 	// definitions are in one file
 	eventsDef struct {
@@ -136,7 +132,7 @@ func procEvents() ([]*eventsDef, error) {
 				Internal:  true,
 			})
 
-			// Ensure all imports are checked and
+			// Ensure all imports are checked
 			for _, p := range evDef.Properties {
 				if p.Import == "" {
 					if strings.HasPrefix(p.Type, "*types.") || strings.HasPrefix(p.Type, "types.") {
@@ -172,7 +168,7 @@ func genEvents(tpl *template.Template, dd []*eventsDef) (err error) {
 	)
 
 	for _, d := range dd {
-		// Generic code, every event goes into one file (per app)
+		// Generic code, all events go into one file (per app)
 		err = goTemplate(path.Join(d.outputDir, "events.gen.go"), tplEventsGen, d)
 		if err != nil {
 			return
