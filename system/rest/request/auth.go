@@ -1,38 +1,50 @@
 package request
 
-/*
-	Hello! This file is auto-generated from `docs/src/spec.json`.
-
-	For development:
-	In order to update the generated files, edit this file under the location,
-	add your struct fields, imports, API definitions and whatever you want, and:
-
-	1. run [spec](https://github.com/titpetric/spec) in the same folder,
-	2. run `./_gen.php` in this folder.
-
-	You may edit `auth.go`, `auth.util.go` or `auth_test.go` to
-	implement your API calls, helper functions and tests. The file `auth.go`
-	is only generated the first time, and will not be overwritten if it exists.
-*/
+// This file is auto-generated.
+//
+// Changes to this file may cause incorrect behavior and will be lost if
+// the code is regenerated.
+//
+// Definitions file that controls how this file is generated:
+//
 
 import (
-	"io"
-	"strings"
-
 	"encoding/json"
+	"fmt"
+	"github.com/cortezaproject/corteza-server/pkg/payload"
+	"github.com/go-chi/chi"
+	"io"
 	"mime/multipart"
 	"net/http"
-
-	"github.com/go-chi/chi"
-	"github.com/pkg/errors"
+	"strings"
 )
 
-var _ = chi.URLParam
-var _ = multipart.FileHeader{}
+// dummy vars to prevent
+// unused imports complain
+var (
+	_ = chi.URLParam
+	_ = multipart.ErrMessageTooLarge
+	_ = payload.ParseUint64s
+)
 
-// AuthSettings request parameters
-type AuthSettings struct {
-}
+type (
+	// Internal API interface
+	AuthSettings struct {
+	}
+
+	AuthCheck struct {
+	}
+
+	AuthExchangeAuthToken struct {
+		// Token POST parameter
+		//
+		// Token to be exchanged for JWT
+		Token string
+	}
+
+	AuthLogout struct {
+	}
+)
 
 // NewAuthSettings request
 func NewAuthSettings() *AuthSettings {
@@ -41,9 +53,7 @@ func NewAuthSettings() *AuthSettings {
 
 // Auditable returns all auditable/loggable parameters
 func (r AuthSettings) Auditable() map[string]interface{} {
-	var out = map[string]interface{}{}
-
-	return out
+	return map[string]interface{}{}
 }
 
 // Fill processes request and fills internal variables
@@ -55,32 +65,11 @@ func (r *AuthSettings) Fill(req *http.Request) (err error) {
 		case err == io.EOF:
 			err = nil
 		case err != nil:
-			return errors.Wrap(err, "error parsing http request body")
+			return fmt.Errorf("error parsing http request body: %w", err)
 		}
 	}
 
-	if err = req.ParseForm(); err != nil {
-		return err
-	}
-
-	get := map[string]string{}
-	post := map[string]string{}
-	urlQuery := req.URL.Query()
-	for name, param := range urlQuery {
-		get[name] = string(param[0])
-	}
-	postVars := req.Form
-	for name, param := range postVars {
-		post[name] = string(param[0])
-	}
-
 	return err
-}
-
-var _ RequestFiller = NewAuthSettings()
-
-// AuthCheck request parameters
-type AuthCheck struct {
 }
 
 // NewAuthCheck request
@@ -90,9 +79,7 @@ func NewAuthCheck() *AuthCheck {
 
 // Auditable returns all auditable/loggable parameters
 func (r AuthCheck) Auditable() map[string]interface{} {
-	var out = map[string]interface{}{}
-
-	return out
+	return map[string]interface{}{}
 }
 
 // Fill processes request and fills internal variables
@@ -104,35 +91,11 @@ func (r *AuthCheck) Fill(req *http.Request) (err error) {
 		case err == io.EOF:
 			err = nil
 		case err != nil:
-			return errors.Wrap(err, "error parsing http request body")
+			return fmt.Errorf("error parsing http request body: %w", err)
 		}
 	}
 
-	if err = req.ParseForm(); err != nil {
-		return err
-	}
-
-	get := map[string]string{}
-	post := map[string]string{}
-	urlQuery := req.URL.Query()
-	for name, param := range urlQuery {
-		get[name] = string(param[0])
-	}
-	postVars := req.Form
-	for name, param := range postVars {
-		post[name] = string(param[0])
-	}
-
 	return err
-}
-
-var _ RequestFiller = NewAuthCheck()
-
-// AuthExchangeAuthToken request parameters
-type AuthExchangeAuthToken struct {
-	hasToken bool
-	rawToken string
-	Token    string
 }
 
 // NewAuthExchangeAuthToken request
@@ -142,11 +105,14 @@ func NewAuthExchangeAuthToken() *AuthExchangeAuthToken {
 
 // Auditable returns all auditable/loggable parameters
 func (r AuthExchangeAuthToken) Auditable() map[string]interface{} {
-	var out = map[string]interface{}{}
+	return map[string]interface{}{
+		"token": r.Token,
+	}
+}
 
-	out["token"] = r.Token
-
-	return out
+// Auditable returns all auditable/loggable parameters
+func (r AuthExchangeAuthToken) GetToken() string {
+	return r.Token
 }
 
 // Fill processes request and fills internal variables
@@ -158,38 +124,26 @@ func (r *AuthExchangeAuthToken) Fill(req *http.Request) (err error) {
 		case err == io.EOF:
 			err = nil
 		case err != nil:
-			return errors.Wrap(err, "error parsing http request body")
+			return fmt.Errorf("error parsing http request body: %w", err)
 		}
 	}
 
-	if err = req.ParseForm(); err != nil {
-		return err
-	}
+	{
+		if err = req.ParseForm(); err != nil {
+			return err
+		}
 
-	get := map[string]string{}
-	post := map[string]string{}
-	urlQuery := req.URL.Query()
-	for name, param := range urlQuery {
-		get[name] = string(param[0])
-	}
-	postVars := req.Form
-	for name, param := range postVars {
-		post[name] = string(param[0])
-	}
+		// POST params
 
-	if val, ok := post["token"]; ok {
-		r.hasToken = true
-		r.rawToken = val
-		r.Token = val
+		if val, ok := req.Form["token"]; ok && len(val) > 0 {
+			r.Token, err = val[0], nil
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return err
-}
-
-var _ RequestFiller = NewAuthExchangeAuthToken()
-
-// AuthLogout request parameters
-type AuthLogout struct {
 }
 
 // NewAuthLogout request
@@ -199,9 +153,7 @@ func NewAuthLogout() *AuthLogout {
 
 // Auditable returns all auditable/loggable parameters
 func (r AuthLogout) Auditable() map[string]interface{} {
-	var out = map[string]interface{}{}
-
-	return out
+	return map[string]interface{}{}
 }
 
 // Fill processes request and fills internal variables
@@ -213,41 +165,9 @@ func (r *AuthLogout) Fill(req *http.Request) (err error) {
 		case err == io.EOF:
 			err = nil
 		case err != nil:
-			return errors.Wrap(err, "error parsing http request body")
+			return fmt.Errorf("error parsing http request body: %w", err)
 		}
 	}
 
-	if err = req.ParseForm(); err != nil {
-		return err
-	}
-
-	get := map[string]string{}
-	post := map[string]string{}
-	urlQuery := req.URL.Query()
-	for name, param := range urlQuery {
-		get[name] = string(param[0])
-	}
-	postVars := req.Form
-	for name, param := range postVars {
-		post[name] = string(param[0])
-	}
-
 	return err
-}
-
-var _ RequestFiller = NewAuthLogout()
-
-// HasToken returns true if token was set
-func (r *AuthExchangeAuthToken) HasToken() bool {
-	return r.hasToken
-}
-
-// RawToken returns raw value of token parameter
-func (r *AuthExchangeAuthToken) RawToken() string {
-	return r.rawToken
-}
-
-// GetToken returns casted value of  token parameter
-func (r *AuthExchangeAuthToken) GetToken() string {
-	return r.Token
 }

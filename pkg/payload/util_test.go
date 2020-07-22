@@ -1,4 +1,4 @@
-package request
+package payload
 
 import (
 	"testing"
@@ -9,13 +9,13 @@ func Test_parseBool(t *testing.T) {
 	falsies := []string{"a", "FALSE", "tr", "11111", " FALSE ", "0"}
 
 	for _, truth := range truthies {
-		if !parseBool(truth) {
+		if !ParseBool(truth) {
 			t.Errorf("Must parse '%s' as boolean value TRUE", truth)
 		}
 	}
 
 	for _, falsie := range falsies {
-		if parseBool(falsie) {
+		if ParseBool(falsie) {
 			t.Errorf("Must not parse '%s' as boolean value TRUE", falsie)
 		}
 	}

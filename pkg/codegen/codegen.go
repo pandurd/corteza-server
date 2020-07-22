@@ -2,6 +2,8 @@ package codegen
 
 import (
 	"github.com/cortezaproject/corteza-server/pkg/cli"
+	"github.com/davecgh/go-spew/spew"
+	"strings"
 	"text/template"
 )
 
@@ -9,13 +11,11 @@ type (
 	definitions struct {
 		App string
 
-		RestAPI RestAPI
+		Rest    []*restDef
 		Actions []*actionsDef
 		Events  []*eventsDef
 		Types   []*typesDef
 	}
-
-	RestAPI struct{}
 )
 
 func Proc() {
@@ -25,7 +25,10 @@ func Proc() {
 		def = &definitions{}
 
 		tpls = template.New("").Funcs(map[string]interface{}{
-			"camelCase": camelCase,
+			"camelCase":       camelCase,
+			"pubIdent":        pubIdent,
+			"toLower":         strings.ToLower,
+			"normalizeImport": normalizeImport,
 		})
 	)
 
@@ -47,5 +50,12 @@ func Proc() {
 		cli.HandleError(err)
 	} else {
 		cli.HandleError(genTypes(tpls, def.Types))
+	}
+
+	if def.Rest, err = procRest(); err != nil {
+		cli.HandleError(err)
+	} else {
+		spew.Dump(def.Rest)
+		cli.HandleError(genRest(tpls, def.Rest))
 	}
 }

@@ -2,7 +2,6 @@ package codegen
 
 import (
 	"fmt"
-	"github.com/cortezaproject/corteza-server/pkg/slice"
 	"gopkg.in/yaml.v2"
 	"os"
 	"path"
@@ -11,207 +10,215 @@ import (
 	"text/template"
 )
 
-const (
-	templateFiles = "codegen/v2/events/*.tpl"
-)
-
 type (
+	// The following structure represents
+	// legacy API definition (spec.json)
+	//
+	//
+
 	// definitions are in one file
-	eventsDef struct {
-		Package   string
+	restDef struct {
 		App       string
 		Source    string
 		outputDir string
 
-		// List of imports
-		// Used only by generated file and not pre-generated-user-file
-		Imports []string
-
-		Resources evResourceDefMap
+		Endpoints []*restEndpointDef
 	}
 
-	evResourceDefMap map[string]evResourceDef
-
-	evResourceDef struct {
-		// used as string
-		ResourceString string
-
-		// used as (go) ident
-		ResourceIdent string
-
-		// used for filename
-		ResourceFile string
-
-		On          []string     `yaml:"on"`
-		BeforeAfter []string     `yaml:"ba"`
-		Properties  []eventProps `yaml:"props"`
-		Result      string       `yaml:"result"`
+	restEndpointDef struct {
+		Title          string                `yaml:"title"`
+		Path           string                `yaml:"path"`
+		Entrypoint     string                `yaml:"entrypoint"`
+		Authentication []interface{}         `yaml:"authentication,omitempty"`
+		Apis           []*restEndpointApi    `yaml:"apis"`
+		Imports        []string              `yaml:"imports"`
+		Description    string                `yaml:"description,omitempty"`
+		Params         restEndpointParamsDef `yaml:"parameters,omitempty"`
 	}
 
-	eventProps struct {
-		Name string
-		Type string
+	restEndpointApi struct {
+		Name   string                `yaml:"name"`
+		Method string                `yaml:"method"`
+		Title  string                `yaml:"title"`
+		Path   string                `yaml:"path"`
+		Params restEndpointParamsDef `yaml:"parameters,omitempty"`
+	}
 
-		// Import path for prop type, use package's type by default (see importTypePathTpl)
-		Import string
+	restEndpointParamsDef struct {
+		Post []*restEndpointParamDef `yaml:"post"`
+		Path []*restEndpointParamDef `yaml:"path"`
+		Get  []*restEndpointParamDef `yaml:"get"`
+	}
 
-		// Set property internally only, not via constructor
-		Internal bool
-
-		// Do not allow change of the variable through
-		Immutable bool
+	restEndpointParamDef struct {
+		Name     string `yaml:"name"`
+		Type     string `yaml:"type"`
+		Required bool   `yaml:"required"`
+		Title    string `yaml:"title"`
+		Origin   string
 	}
 )
 
-func procEvents() ([]*eventsDef, error) {
-	// <app>/service/event/events.yaml
-	const (
-		importTypePathTpl = "github.com/cortezaproject/corteza-server/%s/types"
-		importAuthPath    = "github.com/cortezaproject/corteza-server/pkg/auth"
-	)
+func procRest() ([]*restDef, error) {
+	// <app>/rest.yaml
 
 	var (
-		dd = make([]*eventsDef, 0)
+		dd = make([]*restDef, 0)
 	)
 
-	mm, err := filepath.Glob(filepath.Join("*", "service", "event", "events.yaml"))
+	mm, err := filepath.Glob(filepath.Join("*", "rest.yaml"))
 	if err != nil {
 		return nil, fmt.Errorf("glob failed: %w", err)
 	}
 
 	for _, m := range mm {
-		f, err := os.Open(m)
+		err = func() error {
+			f, err := os.Open(m)
+			if err != nil {
+				return fmt.Errorf("%s read failed: %w", m, err)
+			}
+
+			defer f.Close()
+
+			var d = &restDef{}
+
+			if err := yaml.NewDecoder(f).Decode(d); err != nil {
+				return err
+			}
+
+			d.outputDir = path.Dir(m)
+
+			// Append params from endpoit to all apis
+			for _, e := range d.Endpoints {
+				for _, a := range e.Apis {
+					a.Params.Path = append(e.Params.Path, a.Params.Path...)
+					a.Params.Post = append(e.Params.Post, a.Params.Post...)
+					a.Params.Get = append(e.Params.Get, a.Params.Get...)
+				}
+			}
+
+			dd = append(dd, d)
+			return nil
+		}()
+
 		if err != nil {
-			return nil, fmt.Errorf("%s read failed: %w", m, err)
+			return nil, fmt.Errorf("failed to process %s: %w", m, err)
 		}
-
-		defer f.Close()
-
-		var (
-			e = evResourceDefMap{}
-			d = &eventsDef{
-				Package:   "event",
-				Source:    m,
-				App:       m[:strings.Index(m, "/")],
-				outputDir: path.Dir(m),
-				Resources: map[string]evResourceDef{},
-			}
-		)
-
-		if err := yaml.NewDecoder(f).Decode(e); err != nil {
-			return nil, err
-		}
-
-		for resName, evDef := range e {
-
-			d.Imports = make([]string, 0)
-			evDef.ResourceString = resName
-
-			if l := strings.Index(resName, ":"); l > 0 {
-				evDef.ResourceIdent = resName[l+1:]
-			} else {
-				evDef.ResourceIdent = resName
-			}
-
-			// make filename
-			evDef.ResourceFile = strings.ReplaceAll(evDef.ResourceIdent, ":", "_")
-			evDef.ResourceFile = strings.ReplaceAll(evDef.ResourceFile, "-", "_")
-
-			// make identifier (string that will be used for struct name)
-			evDef.ResourceIdent = camelCase(strings.Split(evDef.ResourceFile, "_")...)
-
-			// Prepare the data
-
-			// no default ("result") result set, use first one from properties
-			if evDef.Result == "" && len(evDef.Properties) > 0 {
-				evDef.Result = evDef.Properties[0].Name
-			}
-
-			// Invoker - user that invoked (triggered) the event
-			evDef.Properties = append(evDef.Properties, eventProps{
-				Name:      "invoker",
-				Type:      "auth.Identifiable",
-				Import:    importAuthPath,
-				Immutable: false,
-				Internal:  true,
-			})
-
-			// Ensure all imports are checked and
-			for _, p := range evDef.Properties {
-				if p.Import == "" {
-					if strings.HasPrefix(p.Type, "*types.") || strings.HasPrefix(p.Type, "types.") {
-						p.Import = fmt.Sprintf(importTypePathTpl, d.App)
-					}
-				}
-
-				if p.Import != "" && !slice.HasString(d.Imports, p.Import) {
-					d.Imports = append(d.Imports, p.Import)
-				}
-
-				p.Import = ""
-			}
-
-			d.Resources[resName] = evDef
-		}
-
-		dd = append(dd, d)
 	}
 
 	return dd, nil
 }
 
-func genEvents(tpl *template.Template, dd []*eventsDef) (err error) {
+func genRest(tpl *template.Template, dd []*restDef) (err error) {
 	var (
 		// Will only be generated if file does not exist previously
-		tplEvents = tpl.Lookup("events.go.tpl")
-
-		// Always regenerated
-		tplEventsGen = tpl.Lookup("events.gen.go.tpl")
+		tplHandler = tpl.Lookup("rest_handler.go.tpl")
+		tplRequest = tpl.Lookup("rest_request.go.tpl")
 
 		dst string
 	)
 
 	for _, d := range dd {
-		// Generic code, every event goes into one file (per app)
-		err = goTemplate(path.Join(d.outputDir, "events.gen.go"), tplEventsGen, d)
-		if err != nil {
-			return
-		}
+		for _, e := range d.Endpoints {
 
-		for _, r := range d.Resources {
-			dst = path.Join(d.outputDir, r.ResourceFile+".go")
-			_, err = os.Stat(dst)
-			if os.IsNotExist(err) {
-				err = goTemplate(dst, tplEvents, map[string]interface{}{
-					"Package":       d.Package,
-					"ResourceIdent": r.ResourceIdent,
-				})
+			// Generic code, every event goes into one file (per app)
+			dst = path.Join(d.outputDir, "rest", "handlers", e.Entrypoint+".go")
+			println(dst)
+			err = goTemplate(dst, tplHandler, map[string]interface{}{
+				"Source":   d.Source,
+				"Endpoint": e,
+				"App":      path.Base(d.outputDir),
+			})
+			if err != nil {
+				return
 			}
 
+			// Generic code, every event goes into one file (per app)
+			dst = path.Join(d.outputDir, "rest", "request", e.Entrypoint+".go")
+			println(dst)
+			err = goTemplate(dst, tplRequest, map[string]interface{}{
+				"Source":   d.Source,
+				"Endpoint": e,
+				"Imports":  e.Imports,
+			})
 			if err != nil {
 				return
 			}
 		}
+
 	}
 
 	return nil
 }
 
-// Merge on/before/after events
-func (def evResourceDef) Events() []string {
-	return append(
-		makeEventGroup("on", def.On),
-		append(
-			makeEventGroup("before", def.BeforeAfter),
-			makeEventGroup("after", def.BeforeAfter)...,
-		)...,
-	)
-}
+func (d *restEndpointParamsDef) All() []*restEndpointParamDef {
+	var pp = make([]*restEndpointParamDef, 0)
 
-func makeEventGroup(pfix string, ee []string) (out []string) {
-	for _, e := range ee {
-		out = append(out, pfix+strings.ToUpper(e[:1])+e[1:])
+	for _, p := range d.Path {
+		p.Origin = "PATH"
+		pp = append(pp, p)
 	}
 
-	return
+	for _, p := range d.Get {
+		p.Origin = "GET"
+		pp = append(pp, p)
+	}
+
+	for _, p := range d.Post {
+		p.Origin = "POST"
+		pp = append(pp, p)
+	}
+
+	return pp
+}
+
+func (d *restEndpointParamDef) IsUpload() bool {
+	switch d.Type {
+	case "*multipart.FileHeader":
+		return true
+	}
+
+	return false
+}
+
+func (d *restEndpointParamDef) IsSlice() bool {
+	return strings.HasPrefix(d.Type, "[]") || strings.HasSuffix(d.Type, "Set")
+}
+
+func (d *restEndpointParamDef) IsString() bool {
+	switch d.Type {
+	case "string", "[]string", "[]*string":
+		return true
+	}
+
+	return false
+}
+
+func (d *restEndpointParamDef) FieldTag() string {
+	switch d.Type {
+	case "uint64":
+		return "`json:\",string\"`"
+	}
+
+	return ""
+}
+
+func (d *restEndpointParamDef) Parser(arg string) string {
+	switch d.Type {
+	case "[]uint64":
+		return fmt.Sprintf("payload.ParseUint64s(%s), nil", arg)
+	case "time.Time":
+		return fmt.Sprintf("payload.ParseISODateWithErr(%s)", arg)
+	case "*time.Time":
+		return fmt.Sprintf("payload.ParseISODatePtrWithErr(%s)", arg)
+	case "sqlxTypes.JSONText":
+		return fmt.Sprintf("payload.ParseJSONTextWithErr(%s)", arg)
+	case "int", "uint", "uint64", "int64", "float", "float64", "bool":
+		return fmt.Sprintf("payload.Parse%s(%s), nil", pubIdent(d.Type), arg)
+	case "string", "[]string":
+		return fmt.Sprintf("%s, nil", arg)
+	default:
+		return fmt.Sprintf("%s(%s), nil", d.Type, arg)
+	}
+
 }
