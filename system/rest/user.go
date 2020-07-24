@@ -40,8 +40,8 @@ func (User) New() *User {
 
 func (ctrl User) List(ctx context.Context, r *request.UserList) (interface{}, error) {
 	f := types.UserFilter{
-		UserID:    payload.ParseUInt64s(r.UserID),
-		RoleID:    payload.ParseUInt64s(r.RoleID),
+		UserID:    payload.ParseUint64s(r.UserID),
+		RoleID:    payload.ParseUint64s(r.RoleID),
 		Query:     r.Query,
 		Email:     r.Email,
 		Username:  r.Username,

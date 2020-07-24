@@ -1,0 +1,4 @@
+package: settings
+types:
+  Value:
+    noIdField: true
