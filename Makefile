@@ -1,4 +1,4 @@
-.PHONY: pack build help realize qa critic vet codegen integration
+.PHONY: pack build help qa critic vet codegen integration
 
 GO         = go
 GOGET      = $(GO) get -u
@@ -66,7 +66,6 @@ DOCKER                ?= docker
 
 ########################################################################################################################
 # Tool bins
-REALIZE     = ${GOPATH}/bin/realize
 GOCRITIC    = ${GOPATH}/bin/gocritic
 MOCKGEN     = ${GOPATH}/bin/mockgen
 STATICCHECK = ${GOPATH}/bin/staticcheck
@@ -121,12 +120,6 @@ $(RELEASE_PKEY):
 
 ########################################################################################################################
 # Development
-
-realize: $(REALIZE)
-	$(REALIZE) start
-
-codegen: $(PROTOGEN)
-	./codegen.sh
 
 mailhog.up:
 	$(DOCKER) run --rm --publish $(DEV_MAILHOG_HTTP_ADDR):8025 --publish $(DEV_MAILHOG_SMTP_ADDR):1025 mailhog/mailhog
@@ -212,9 +205,6 @@ mocks: $(MOCKGEN)
 ########################################################################################################################
 # Toolset
 
-$(REALIZE):
-	$(GOGET) github.com/tockins/realize
-
 $(GOCRITIC):
 	$(GOGET) github.com/go-critic/go-critic/...
 
@@ -231,4 +221,6 @@ $(NODEMON):
 	npm install -g nodemon
 
 clean:
-	rm -f $(REALIZE) $(GOCRITIC)
+	rm -f $(GOCRITIC)
+
+#
