@@ -3,18 +3,25 @@ package rest
 import (
 	"context"
 	"fmt"
-	"github.com/cortezaproject/corteza-server/pkg/settings"
 	"github.com/cortezaproject/corteza-server/system/rest/request"
 	"github.com/cortezaproject/corteza-server/system/service"
+	"github.com/cortezaproject/corteza-server/system/types"
 	"strconv"
 )
 
 type (
 	Settings struct {
 		svc struct {
-			settings settings.Service
+			settings settingsService
 			att      service.AttachmentService
 		}
+	}
+
+	settingsService interface {
+		FindByPrefix(context.Context, ...string) (types.SettingValueSet, error)
+		BulkSet(context.Context, types.SettingValueSet) error
+		Get(context.Context, string, uint64) (*types.SettingValue, error)
+		Set(context.Context, *types.SettingValue) error
 	}
 )
 
@@ -70,7 +77,7 @@ func (ctrl *Settings) Set(ctx context.Context, r *request.SettingsSet) (interfac
 			map[string]string{"key": r.Key, "ownedBy": strconv.FormatUint(r.OwnerID, 10)},
 		)
 
-		s := &settings.Value{Name: r.Key, OwnedBy: r.OwnerID}
+		s := &types.SettingValue{Name: r.Key, OwnedBy: r.OwnerID}
 		if err = s.SetValue(fmt.Sprintf("attachment:%d", att.ID)); err != nil {
 			return nil, err
 		}
