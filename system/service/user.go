@@ -2,24 +2,22 @@ package service
 
 import (
 	"context"
+	"errors"
+	"github.com/cortezaproject/corteza-server/pkg/actionlog"
+	internalAuth "github.com/cortezaproject/corteza-server/pkg/auth"
+	"github.com/cortezaproject/corteza-server/pkg/eventbus"
+	"github.com/cortezaproject/corteza-server/pkg/handle"
+	"github.com/cortezaproject/corteza-server/pkg/id"
+	"github.com/cortezaproject/corteza-server/pkg/permissions"
+	"github.com/cortezaproject/corteza-server/pkg/rh"
 	"github.com/cortezaproject/corteza-server/store"
+	"github.com/cortezaproject/corteza-server/system/service/event"
+	"github.com/cortezaproject/corteza-server/system/types"
 	"io"
 	"net/mail"
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/titpetric/factory"
-
-	"github.com/cortezaproject/corteza-server/pkg/actionlog"
-	internalAuth "github.com/cortezaproject/corteza-server/pkg/auth"
-	"github.com/cortezaproject/corteza-server/pkg/eventbus"
-	"github.com/cortezaproject/corteza-server/pkg/handle"
-	"github.com/cortezaproject/corteza-server/pkg/permissions"
-	"github.com/cortezaproject/corteza-server/pkg/rh"
-	"github.com/cortezaproject/corteza-server/system/repository"
-	"github.com/cortezaproject/corteza-server/system/service/event"
-	"github.com/cortezaproject/corteza-server/system/types"
 )
 
 const (
@@ -29,7 +27,6 @@ const (
 
 type (
 	user struct {
-		db  *factory.DB
 		ctx context.Context
 
 		actionlog actionlog.Recorder
@@ -42,9 +39,14 @@ type (
 		ac       userAccessController
 		eventbus eventDispatcher
 
-		user        repository.UserRepository
-		role        repository.RoleRepository
-		credentials repository.CredentialsRepository
+		store userStore
+	}
+
+	userStore interface {
+		usersStore
+		rolesStore
+
+		CountUsers(context.Context, types.UserFilter) (uint, error)
 	}
 
 	userAuth interface {
@@ -109,6 +111,8 @@ func User(ctx context.Context) UserService {
 		settings: CurrentSettings,
 		auth:     DefaultAuth,
 
+		store: DefaultNgStore,
+
 		actionlog: DefaultActionlog,
 
 		subscription: CurrentSubscription,
@@ -116,11 +120,8 @@ func User(ctx context.Context) UserService {
 }
 
 func (svc user) With(ctx context.Context) UserService {
-	db := repository.DB(ctx)
-
 	return &user{
 		ctx: ctx,
-		db:  db,
 
 		actionlog: svc.actionlog,
 
@@ -129,10 +130,7 @@ func (svc user) With(ctx context.Context) UserService {
 		settings:     svc.settings,
 		auth:         svc.auth,
 		subscription: svc.subscription,
-
-		user:        repository.User(ctx, db),
-		role:        repository.Role(ctx, db),
-		credentials: repository.Credentials(ctx, db),
+		store:        svc.store,
 	}
 }
 
@@ -141,7 +139,7 @@ func (svc user) FindByID(userID uint64) (u *types.User, err error) {
 		uaProps = &userActionProps{user: &types.User{ID: userID}}
 	)
 
-	err = svc.db.Transaction(func() error {
+	err = func() error {
 		if userID == 0 {
 			return UserErrInvalidID()
 		}
@@ -156,9 +154,9 @@ func (svc user) FindByID(userID uint64) (u *types.User, err error) {
 			return nil
 		}
 
-		u, err = svc.proc(svc.user.FindByID(userID))
+		u, err = svc.proc(svc.store.LookupUserByID(svc.ctx, userID))
 		return err
-	})
+	}()
 
 	return u, svc.recordAction(svc.ctx, uaProps, UserActionLookup, err)
 }
@@ -168,10 +166,10 @@ func (svc user) FindByEmail(email string) (u *types.User, err error) {
 		uaProps = &userActionProps{user: &types.User{Email: email}}
 	)
 
-	err = svc.db.Transaction(func() error {
-		u, err = svc.proc(svc.user.FindByEmail(email))
+	err = func() error {
+		u, err = svc.proc(svc.store.LookupUserByEmail(svc.ctx, email))
 		return err
-	})
+	}()
 
 	return u, svc.recordAction(svc.ctx, uaProps, UserActionLookup, err)
 }
@@ -181,10 +179,10 @@ func (svc user) FindByUsername(username string) (u *types.User, err error) {
 		uaProps = &userActionProps{user: &types.User{Username: username}}
 	)
 
-	err = svc.db.Transaction(func() error {
-		u, err = svc.proc(svc.user.FindByUsername(username))
+	err = func() error {
+		u, err = svc.proc(svc.store.LookupUserByUsername(svc.ctx, username))
 		return err
-	})
+	}()
 
 	return u, svc.recordAction(svc.ctx, uaProps, UserActionLookup, err)
 }
@@ -194,10 +192,10 @@ func (svc user) FindByHandle(handle string) (u *types.User, err error) {
 		uaProps = &userActionProps{user: &types.User{Handle: handle}}
 	)
 
-	err = svc.db.Transaction(func() error {
-		u, err = svc.proc(svc.user.FindByHandle(handle))
+	err = func() error {
+		u, err = svc.proc(svc.store.LookupUserByHandle(svc.ctx, handle))
 		return err
-	})
+	}()
 
 	return u, svc.recordAction(svc.ctx, uaProps, UserActionLookup, err)
 }
@@ -234,7 +232,7 @@ func (svc user) FindByAny(ctx context.Context, identifier interface{}) (u *types
 		return
 	}
 
-	rr, _, err := svc.role.With(ctx, svc.db).Find(types.RoleFilter{MemberID: u.ID})
+	rr, _, err := svc.store.SearchRoles(svc.ctx, types.RoleFilter{MemberID: u.ID})
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +243,7 @@ func (svc user) FindByAny(ctx context.Context, identifier interface{}) (u *types
 
 func (svc user) proc(u *types.User, err error) (*types.User, error) {
 	if err != nil {
-		if repository.ErrUserNotFound.Eq(err) {
+		if errors.Is(err, store.ErrNotFound) {
 			return nil, UserErrNotFound()
 		}
 
@@ -262,7 +260,7 @@ func (svc user) Find(filter types.UserFilter) (uu types.UserSet, f types.UserFil
 		uaProps = &userActionProps{filter: &filter}
 	)
 
-	err = svc.db.Transaction(func() error {
+	err = func() error {
 		if filter.Deleted > 0 {
 			// If list with deleted users is requested
 			// user must have access permissions to system (ie: is admin)
@@ -282,7 +280,7 @@ func (svc user) Find(filter types.UserFilter) (uu types.UserSet, f types.UserFil
 
 		filter.IsReadable = svc.ac.FilterReadableUsers(svc.ctx)
 
-		uu, f, err = svc.user.Find(filter)
+		uu, f, err = svc.store.SearchUsers(svc.ctx, filter)
 		if err != nil {
 			return err
 		}
@@ -291,7 +289,7 @@ func (svc user) Find(filter types.UserFilter) (uu types.UserSet, f types.UserFil
 			svc.handlePrivateData(u)
 			return nil
 		})
-	})
+	}()
 
 	return uu, f, svc.recordAction(svc.ctx, uaProps, UserActionSearch, err)
 }
@@ -301,7 +299,7 @@ func (svc user) Create(new *types.User) (u *types.User, err error) {
 		uaProps = &userActionProps{new: new}
 	)
 
-	err = svc.db.Transaction(func() (err error) {
+	err = func() (err error) {
 		if !svc.ac.CanCreateUser(svc.ctx) {
 			return UserErrNotAllowedToCreate()
 		}
@@ -315,10 +313,15 @@ func (svc user) Create(new *types.User) (u *types.User, err error) {
 		}
 
 		if svc.subscription != nil {
+			var c uint
+			if c, err = svc.store.CountUsers(svc.ctx, types.UserFilter{}); err != nil {
+				return err
+			}
+
 			// When we have an active subscription, we need to check
 			// if users can be create or did this deployment hit
 			// it's user-limit
-			err = svc.subscription.CanCreateUser(svc.user.Total())
+			err = svc.subscription.CanCreateUser(c)
 			if err != nil {
 				return err
 			}
@@ -336,13 +339,16 @@ func (svc user) Create(new *types.User) (u *types.User, err error) {
 			return
 		}
 
-		if u, err = svc.user.Create(new); err != nil {
+		new.ID = id.Next()
+		new.CreatedAt = now()
+
+		if err = svc.store.CreateUser(svc.ctx, new); err != nil {
 			return
 		}
 
 		_ = svc.eventbus.WaitFor(svc.ctx, event.UserAfterCreate(new, u))
 		return
-	})
+	}()
 
 	return u, svc.recordAction(svc.ctx, uaProps, UserActionCreate, err)
 }
@@ -357,7 +363,7 @@ func (svc user) Update(upd *types.User) (u *types.User, err error) {
 		uaProps = &userActionProps{update: upd}
 	)
 
-	err = svc.db.Transaction(func() (err error) {
+	err = func() (err error) {
 		if upd.ID == 0 {
 			return UserErrInvalidID()
 		}
@@ -370,7 +376,7 @@ func (svc user) Update(upd *types.User) (u *types.User, err error) {
 			return UserErrInvalidEmail()
 		}
 
-		if u, err = svc.user.FindByID(upd.ID); err != nil {
+		if u, err = svc.store.LookupUserByID(svc.ctx, upd.ID); err != nil {
 			return
 		}
 
@@ -388,6 +394,7 @@ func (svc user) Update(upd *types.User) (u *types.User, err error) {
 		u.Name = upd.Name
 		u.Handle = upd.Handle
 		u.Kind = upd.Kind
+		u.UpdatedAt = nowPtr()
 
 		if err = svc.eventbus.WaitFor(svc.ctx, event.UserBeforeUpdate(upd, u)); err != nil {
 			return
@@ -397,13 +404,13 @@ func (svc user) Update(upd *types.User) (u *types.User, err error) {
 			return
 		}
 
-		if u, err = svc.user.Update(u); err != nil {
+		if err = svc.store.UpdateUser(svc.ctx, u); err != nil {
 			return
 		}
 
 		_ = svc.eventbus.WaitFor(svc.ctx, event.UserAfterUpdate(upd, u))
 		return
-	})
+	}()
 
 	return u, svc.recordAction(svc.ctx, uaProps, UserActionUpdate, err)
 }
@@ -441,7 +448,7 @@ func (svc user) UniqueCheck(u *types.User) (err error) {
 			f.Handle = u.Handle
 		}
 
-		set, _, err := svc.user.Find(f)
+		set, _, err := svc.store.SearchUsers(svc.ctx, f)
 		if err != nil || len(set) > 1 {
 			// In case of error or multiple users returned
 			return false
@@ -476,12 +483,12 @@ func (svc user) Delete(userID uint64) (err error) {
 		uaProps = &userActionProps{user: &types.User{ID: userID}}
 	)
 
-	err = svc.db.Transaction(func() (err error) {
+	err = func() (err error) {
 		if userID == 0 {
 			return UserErrInvalidID()
 		}
 
-		if u, err = svc.user.FindByID(userID); err != nil {
+		if u, err = svc.store.LookupUserByID(svc.ctx, userID); err != nil {
 			return
 		}
 
@@ -493,13 +500,14 @@ func (svc user) Delete(userID uint64) (err error) {
 			return
 		}
 
-		if err = svc.user.DeleteByID(userID); err != nil {
+		u.DeletedAt = nowPtr()
+		if err = svc.store.UpdateUser(svc.ctx, u); err != nil {
 			return
 		}
 
 		_ = svc.eventbus.WaitFor(svc.ctx, event.UserAfterDelete(nil, u))
 		return nil
-	})
+	}()
 
 	return svc.recordAction(svc.ctx, uaProps, UserActionDelete, err)
 }
@@ -510,12 +518,12 @@ func (svc user) Undelete(userID uint64) (err error) {
 		uaProps = &userActionProps{user: &types.User{ID: userID}}
 	)
 
-	err = svc.db.Transaction(func() (err error) {
+	err = func() (err error) {
 		if userID == 0 {
 			return UserErrInvalidID()
 		}
 
-		if u, err = svc.user.FindByID(userID); err != nil {
+		if u, err = svc.store.LookupUserByID(svc.ctx, userID); err != nil {
 			return
 		}
 
@@ -529,12 +537,13 @@ func (svc user) Undelete(userID uint64) (err error) {
 			return UserErrNotAllowedToDelete()
 		}
 
-		if err = svc.user.UndeleteByID(userID); err != nil {
-			return err
+		u.DeletedAt = nil
+		if err = svc.store.UpdateUser(svc.ctx, u); err != nil {
+			return
 		}
 
 		return nil
-	})
+	}()
 
 	return svc.recordAction(svc.ctx, uaProps, UserActionUndelete, err)
 
@@ -546,12 +555,12 @@ func (svc user) Suspend(userID uint64) (err error) {
 		uaProps = &userActionProps{user: &types.User{ID: userID}}
 	)
 
-	err = svc.db.Transaction(func() (err error) {
+	err = func() (err error) {
 		if userID == 0 {
 			return UserErrInvalidID()
 		}
 
-		if u, err = svc.user.FindByID(userID); err != nil {
+		if u, err = svc.store.LookupUserByID(svc.ctx, userID); err != nil {
 			return
 		}
 
@@ -561,12 +570,13 @@ func (svc user) Suspend(userID uint64) (err error) {
 			return UserErrNotAllowedToSuspend()
 		}
 
-		if err = svc.user.SuspendByID(userID); err != nil {
-			return err
+		u.SuspendedAt = nowPtr()
+		if err = svc.store.UpdateUser(svc.ctx, u); err != nil {
+			return
 		}
 
 		return nil
-	})
+	}()
 
 	return svc.recordAction(svc.ctx, uaProps, UserActionSuspend, err)
 
@@ -578,12 +588,12 @@ func (svc user) Unsuspend(userID uint64) (err error) {
 		uaProps = &userActionProps{user: &types.User{ID: userID}}
 	)
 
-	err = svc.db.Transaction(func() (err error) {
+	err = func() (err error) {
 		if userID == 0 {
 			return UserErrInvalidID()
 		}
 
-		if u, err = svc.user.FindByID(userID); err != nil {
+		if u, err = svc.store.LookupUserByID(svc.ctx, userID); err != nil {
 			return
 		}
 
@@ -593,12 +603,12 @@ func (svc user) Unsuspend(userID uint64) (err error) {
 			return UserErrNotAllowedToUnsuspend()
 		}
 
-		if err = svc.user.UnsuspendByID(userID); err != nil {
-			return err
+		u.SuspendedAt = nil
+		if err = svc.store.UpdateUser(svc.ctx, u); err != nil {
+			return
 		}
-
 		return nil
-	})
+	}()
 
 	return svc.recordAction(svc.ctx, uaProps, UserActionUnsuspend, err)
 
@@ -613,8 +623,8 @@ func (svc user) SetPassword(userID uint64, newPassword string) (err error) {
 		uaProps = &userActionProps{user: &types.User{ID: userID}}
 	)
 
-	err = svc.db.Transaction(func() error {
-		if u, err = svc.user.FindByID(userID); err != nil {
+	err = func() error {
+		if u, err = svc.store.LookupUserByID(svc.ctx, userID); err != nil {
 			return err
 		}
 
@@ -633,7 +643,7 @@ func (svc user) SetPassword(userID uint64, newPassword string) (err error) {
 		}
 
 		return nil
-	})
+	}()
 
 	return svc.recordAction(svc.ctx, uaProps, UserActionSetPassword, err)
 
