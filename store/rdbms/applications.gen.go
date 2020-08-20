@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/Masterminds/squirrel"
+	"github.com/cortezaproject/corteza-server/pkg/filter"
 	"github.com/cortezaproject/corteza-server/store"
 	"github.com/cortezaproject/corteza-server/system/types"
 	"strings"
@@ -77,7 +78,7 @@ func (s Store) SearchApplications(ctx context.Context, f types.ApplicationFilter
 		// The value for cursor is used and set directly from/to the filter!
 		//
 		// It returns total number of fetched pages and modifies PageCursor value for paging
-		fetchPage = func(cursor *store.PagingCursor, limit uint) (fetched uint, err error) {
+		fetchPage = func(cursor *filter.PagingCursor, limit uint) (fetched uint, err error) {
 			var (
 				res *types.Application
 
@@ -233,7 +234,7 @@ func (s Store) LookupApplicationByID(ctx context.Context, id uint64) (*types.App
 // CreateApplication creates one or more rows in applications table
 func (s Store) CreateApplication(ctx context.Context, rr ...*types.Application) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Insert(s.ApplicationTable()).SetMap(s.internalApplicationEncoder(res)))
+		err = s.Exec(ctx, s.InsertBuilder(s.ApplicationTable()).SetMap(s.internalApplicationEncoder(res)))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -244,13 +245,11 @@ func (s Store) CreateApplication(ctx context.Context, rr ...*types.Application) 
 
 // UpdateApplication updates one or more existing rows in applications
 func (s Store) UpdateApplication(ctx context.Context, rr ...*types.Application) error {
-	return s.config.ErrorHandler(s.PartialUpdateApplication(ctx, nil, rr...))
+	return s.config.ErrorHandler(s.PartialApplicationUpdate(ctx, nil, rr...))
 }
 
-// PartialUpdateApplication updates one or more existing rows in applications
-//
-// It wraps the update into transaction and can perform partial update by providing list of updatable columns
-func (s Store) PartialUpdateApplication(ctx context.Context, onlyColumns []string, rr ...*types.Application) (err error) {
+// PartialApplicationUpdate updates one or more existing rows in applications
+func (s Store) PartialApplicationUpdate(ctx context.Context, onlyColumns []string, rr ...*types.Application) (err error) {
 	for _, res := range rr {
 		err = s.ExecUpdateApplications(
 			ctx,
@@ -267,7 +266,7 @@ func (s Store) PartialUpdateApplication(ctx context.Context, onlyColumns []strin
 // RemoveApplication removes one or more rows from applications table
 func (s Store) RemoveApplication(ctx context.Context, rr ...*types.Application) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Delete(s.ApplicationTable("app")).Where(squirrel.Eq{s.preprocessColumn("app.id", ""): s.preprocessValue(res.ID, "")}))
+		err = s.Exec(ctx, s.DeleteBuilder(s.ApplicationTable("app")).Where(squirrel.Eq{s.preprocessColumn("app.id", ""): s.preprocessValue(res.ID, "")}))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -278,17 +277,17 @@ func (s Store) RemoveApplication(ctx context.Context, rr ...*types.Application) 
 
 // RemoveApplicationByID removes row from the applications table
 func (s Store) RemoveApplicationByID(ctx context.Context, ID uint64) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Delete(s.ApplicationTable("app")).Where(squirrel.Eq{s.preprocessColumn("app.id", ""): s.preprocessValue(ID, "")})))
+	return s.config.ErrorHandler(s.Exec(ctx, s.DeleteBuilder(s.ApplicationTable("app")).Where(squirrel.Eq{s.preprocessColumn("app.id", ""): s.preprocessValue(ID, "")})))
 }
 
 // TruncateApplications removes all rows from the applications table
 func (s Store) TruncateApplications(ctx context.Context) error {
-	return s.config.ErrorHandler(Truncate(ctx, s.DB(), s.ApplicationTable()))
+	return s.config.ErrorHandler(s.Truncate(ctx, s.ApplicationTable()))
 }
 
 // ExecUpdateApplications updates all matched (by cnd) rows in applications with given data
 func (s Store) ExecUpdateApplications(ctx context.Context, cnd squirrel.Sqlizer, set store.Payload) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Update(s.ApplicationTable("app")).Where(cnd).SetMap(set)))
+	return s.config.ErrorHandler(s.Exec(ctx, s.UpdateBuilder(s.ApplicationTable("app")).Where(cnd).SetMap(set)))
 }
 
 // ApplicationLookup prepares Application query and executes it,
@@ -332,7 +331,7 @@ func (s Store) internalApplicationRowScanner(row rowScanner, err error) (*types.
 
 // QueryApplications returns squirrel.SelectBuilder with set table and all columns
 func (s Store) QueryApplications() squirrel.SelectBuilder {
-	return s.Select(s.ApplicationTable("app"), s.ApplicationColumns("app")...)
+	return s.SelectBuilder(s.ApplicationTable("app"), s.ApplicationColumns("app")...)
 }
 
 // ApplicationTable name of the db table
@@ -398,9 +397,9 @@ func (s Store) internalApplicationEncoder(res *types.Application) store.Payload 
 	}
 }
 
-func (s Store) collectApplicationCursorValues(res *types.Application, cc ...string) *store.PagingCursor {
+func (s Store) collectApplicationCursorValues(res *types.Application, cc ...string) *filter.PagingCursor {
 	var (
-		cursor = &store.PagingCursor{}
+		cursor = &filter.PagingCursor{}
 
 		hasUnique bool
 

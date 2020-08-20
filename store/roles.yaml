@@ -32,6 +32,10 @@ lookups:
 
       It returns only valid roles (not deleted, not archived)
 
+extra:
+  - name: RoleMetrics
+    return: [ "*types.RoleMetrics", "error" ]
+
 rdbms:
   alias: rl
   table: roles

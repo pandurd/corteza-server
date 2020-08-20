@@ -4,13 +4,14 @@ import (
 	"context"
 	"github.com/cortezaproject/corteza-server/pkg/id"
 	"github.com/cortezaproject/corteza-server/pkg/rh"
+	"github.com/cortezaproject/corteza-server/store"
 	"github.com/cortezaproject/corteza-server/system/types"
 	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
 )
 
-func testApplications(t *testing.T, s applicationsStore) {
+func testApplications(t *testing.T, s store.Applications) {
 	var (
 		ctx = context.Background()
 		req = require.New(t)

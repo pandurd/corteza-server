@@ -26,28 +26,28 @@ func (s Store) convertApplicationFilter(f types.ApplicationFilter) (query squirr
 	return
 }
 
-func (s Store) ApplicationMetrics(ctx context.Context) (rval *types.ApplicationMetrics, err error) {
+func (s Store) ApplicationMetrics(ctx context.Context) (*types.ApplicationMetrics, error) {
 	var (
 		counters = squirrel.
-			Select(
+				Select(
 				"COUNT(*) as total",
 				"SUM(IF(deleted_at IS NULL, 0, 1)) as deleted",
 				"SUM(IF(deleted_at IS NULL, 1, 0)) as valid",
 			).
 			From(s.UserTable("u"))
+
+		rval     = &types.ApplicationMetrics{}
+		row, err = s.QueryRow(ctx, counters)
 	)
 
-	rval = &types.ApplicationMetrics{}
-
-	var (
-		sql, args = counters.MustSql()
-		row       = s.db.QueryRowContext(ctx, sql, args...)
-	)
+	if err != nil {
+		return nil, err
+	}
 
 	err = row.Scan(&rval.Total, &rval.Deleted, &rval.Valid)
 	if err != nil {
 		return nil, err
 	}
 
-	return
+	return rval, nil
 }

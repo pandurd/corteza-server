@@ -140,7 +140,11 @@ func (svc accessControl) CanCreateChart(ctx context.Context, r *types.Namespace)
 }
 
 func (svc accessControl) CanReadChart(ctx context.Context, r *types.Chart) bool {
-	return svc.can(ctx, r, "read")
+	if r.DeletedAt == nil {
+		return svc.can(ctx, r, "read")
+	} else {
+		return svc.CanDeleteChart(ctx, r)
+	}
 }
 
 func (svc accessControl) FilterReadableCharts(ctx context.Context) *permissions.ResourceFilter {

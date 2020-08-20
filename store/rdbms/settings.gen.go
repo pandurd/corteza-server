@@ -77,7 +77,7 @@ func (s Store) LookupSettingByNameOwnedBy(ctx context.Context, name string, owne
 // CreateSetting creates one or more rows in settings table
 func (s Store) CreateSetting(ctx context.Context, rr ...*types.SettingValue) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Insert(s.SettingTable()).SetMap(s.internalSettingEncoder(res)))
+		err = s.Exec(ctx, s.InsertBuilder(s.SettingTable()).SetMap(s.internalSettingEncoder(res)))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -88,13 +88,11 @@ func (s Store) CreateSetting(ctx context.Context, rr ...*types.SettingValue) (er
 
 // UpdateSetting updates one or more existing rows in settings
 func (s Store) UpdateSetting(ctx context.Context, rr ...*types.SettingValue) error {
-	return s.config.ErrorHandler(s.PartialUpdateSetting(ctx, nil, rr...))
+	return s.config.ErrorHandler(s.PartialSettingUpdate(ctx, nil, rr...))
 }
 
-// PartialUpdateSetting updates one or more existing rows in settings
-//
-// It wraps the update into transaction and can perform partial update by providing list of updatable columns
-func (s Store) PartialUpdateSetting(ctx context.Context, onlyColumns []string, rr ...*types.SettingValue) (err error) {
+// PartialSettingUpdate updates one or more existing rows in settings
+func (s Store) PartialSettingUpdate(ctx context.Context, onlyColumns []string, rr ...*types.SettingValue) (err error) {
 	for _, res := range rr {
 		err = s.ExecUpdateSettings(
 			ctx,
@@ -113,7 +111,7 @@ func (s Store) PartialUpdateSetting(ctx context.Context, onlyColumns []string, r
 // RemoveSetting removes one or more rows from settings table
 func (s Store) RemoveSetting(ctx context.Context, rr ...*types.SettingValue) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Delete(s.SettingTable("st")).Where(squirrel.Eq{s.preprocessColumn("st.name", ""): s.preprocessValue(res.Name, ""),
+		err = s.Exec(ctx, s.DeleteBuilder(s.SettingTable("st")).Where(squirrel.Eq{s.preprocessColumn("st.name", ""): s.preprocessValue(res.Name, ""),
 			s.preprocessColumn("st.rel_owner", ""): s.preprocessValue(res.OwnedBy, ""),
 		}))
 		if err != nil {
@@ -126,7 +124,7 @@ func (s Store) RemoveSetting(ctx context.Context, rr ...*types.SettingValue) (er
 
 // RemoveSettingByNameOwnedBy removes row from the settings table
 func (s Store) RemoveSettingByNameOwnedBy(ctx context.Context, name string, ownedBy uint64) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Delete(s.SettingTable("st")).Where(squirrel.Eq{s.preprocessColumn("st.name", ""): s.preprocessValue(name, ""),
+	return s.config.ErrorHandler(s.Exec(ctx, s.DeleteBuilder(s.SettingTable("st")).Where(squirrel.Eq{s.preprocessColumn("st.name", ""): s.preprocessValue(name, ""),
 
 		s.preprocessColumn("st.rel_owner", ""): s.preprocessValue(ownedBy, ""),
 	})))
@@ -134,12 +132,12 @@ func (s Store) RemoveSettingByNameOwnedBy(ctx context.Context, name string, owne
 
 // TruncateSettings removes all rows from the settings table
 func (s Store) TruncateSettings(ctx context.Context) error {
-	return s.config.ErrorHandler(Truncate(ctx, s.DB(), s.SettingTable()))
+	return s.config.ErrorHandler(s.Truncate(ctx, s.SettingTable()))
 }
 
 // ExecUpdateSettings updates all matched (by cnd) rows in settings with given data
 func (s Store) ExecUpdateSettings(ctx context.Context, cnd squirrel.Sqlizer, set store.Payload) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Update(s.SettingTable("st")).Where(cnd).SetMap(set)))
+	return s.config.ErrorHandler(s.Exec(ctx, s.UpdateBuilder(s.SettingTable("st")).Where(cnd).SetMap(set)))
 }
 
 // SettingLookup prepares Setting query and executes it,
@@ -180,7 +178,7 @@ func (s Store) internalSettingRowScanner(row rowScanner, err error) (*types.Sett
 
 // QuerySettings returns squirrel.SelectBuilder with set table and all columns
 func (s Store) QuerySettings() squirrel.SelectBuilder {
-	return s.Select(s.SettingTable("st"), s.SettingColumns("st")...)
+	return s.SelectBuilder(s.SettingTable("st"), s.SettingColumns("st")...)
 }
 
 // SettingTable name of the db table

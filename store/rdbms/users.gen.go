@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/Masterminds/squirrel"
+	"github.com/cortezaproject/corteza-server/pkg/filter"
 	"github.com/cortezaproject/corteza-server/store"
 	"github.com/cortezaproject/corteza-server/system/types"
 	"strings"
@@ -77,7 +78,7 @@ func (s Store) SearchUsers(ctx context.Context, f types.UserFilter) (types.UserS
 		// The value for cursor is used and set directly from/to the filter!
 		//
 		// It returns total number of fetched pages and modifies PageCursor value for paging
-		fetchPage = func(cursor *store.PagingCursor, limit uint) (fetched uint, err error) {
+		fetchPage = func(cursor *filter.PagingCursor, limit uint) (fetched uint, err error) {
 			var (
 				res *types.User
 
@@ -266,7 +267,7 @@ func (s Store) LookupUserByUsername(ctx context.Context, username string) (*type
 // CreateUser creates one or more rows in users table
 func (s Store) CreateUser(ctx context.Context, rr ...*types.User) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Insert(s.UserTable()).SetMap(s.internalUserEncoder(res)))
+		err = s.Exec(ctx, s.InsertBuilder(s.UserTable()).SetMap(s.internalUserEncoder(res)))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -277,13 +278,11 @@ func (s Store) CreateUser(ctx context.Context, rr ...*types.User) (err error) {
 
 // UpdateUser updates one or more existing rows in users
 func (s Store) UpdateUser(ctx context.Context, rr ...*types.User) error {
-	return s.config.ErrorHandler(s.PartialUpdateUser(ctx, nil, rr...))
+	return s.config.ErrorHandler(s.PartialUserUpdate(ctx, nil, rr...))
 }
 
-// PartialUpdateUser updates one or more existing rows in users
-//
-// It wraps the update into transaction and can perform partial update by providing list of updatable columns
-func (s Store) PartialUpdateUser(ctx context.Context, onlyColumns []string, rr ...*types.User) (err error) {
+// PartialUserUpdate updates one or more existing rows in users
+func (s Store) PartialUserUpdate(ctx context.Context, onlyColumns []string, rr ...*types.User) (err error) {
 	for _, res := range rr {
 		err = s.ExecUpdateUsers(
 			ctx,
@@ -300,7 +299,7 @@ func (s Store) PartialUpdateUser(ctx context.Context, onlyColumns []string, rr .
 // RemoveUser removes one or more rows from users table
 func (s Store) RemoveUser(ctx context.Context, rr ...*types.User) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Delete(s.UserTable("usr")).Where(squirrel.Eq{s.preprocessColumn("usr.id", ""): s.preprocessValue(res.ID, "")}))
+		err = s.Exec(ctx, s.DeleteBuilder(s.UserTable("usr")).Where(squirrel.Eq{s.preprocessColumn("usr.id", ""): s.preprocessValue(res.ID, "")}))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -311,17 +310,17 @@ func (s Store) RemoveUser(ctx context.Context, rr ...*types.User) (err error) {
 
 // RemoveUserByID removes row from the users table
 func (s Store) RemoveUserByID(ctx context.Context, ID uint64) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Delete(s.UserTable("usr")).Where(squirrel.Eq{s.preprocessColumn("usr.id", ""): s.preprocessValue(ID, "")})))
+	return s.config.ErrorHandler(s.Exec(ctx, s.DeleteBuilder(s.UserTable("usr")).Where(squirrel.Eq{s.preprocessColumn("usr.id", ""): s.preprocessValue(ID, "")})))
 }
 
 // TruncateUsers removes all rows from the users table
 func (s Store) TruncateUsers(ctx context.Context) error {
-	return s.config.ErrorHandler(Truncate(ctx, s.DB(), s.UserTable()))
+	return s.config.ErrorHandler(s.Truncate(ctx, s.UserTable()))
 }
 
 // ExecUpdateUsers updates all matched (by cnd) rows in users with given data
 func (s Store) ExecUpdateUsers(ctx context.Context, cnd squirrel.Sqlizer, set store.Payload) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Update(s.UserTable("usr")).Where(cnd).SetMap(set)))
+	return s.config.ErrorHandler(s.Exec(ctx, s.UpdateBuilder(s.UserTable("usr")).Where(cnd).SetMap(set)))
 }
 
 // UserLookup prepares User query and executes it,
@@ -369,7 +368,7 @@ func (s Store) internalUserRowScanner(row rowScanner, err error) (*types.User, e
 
 // QueryUsers returns squirrel.SelectBuilder with set table and all columns
 func (s Store) QueryUsers() squirrel.SelectBuilder {
-	return s.Select(s.UserTable("usr"), s.UserColumns("usr")...)
+	return s.SelectBuilder(s.UserTable("usr"), s.UserColumns("usr")...)
 }
 
 // UserTable name of the db table
@@ -447,9 +446,9 @@ func (s Store) internalUserEncoder(res *types.User) store.Payload {
 	}
 }
 
-func (s Store) collectUserCursorValues(res *types.User, cc ...string) *store.PagingCursor {
+func (s Store) collectUserCursorValues(res *types.User, cc ...string) *filter.PagingCursor {
 	var (
-		cursor = &store.PagingCursor{}
+		cursor = &filter.PagingCursor{}
 
 		hasUnique bool
 

@@ -28,7 +28,7 @@ type (
 		eventbus  eventDispatcher
 
 		subscription  authSubscriptionChecker
-		store         authServiceStore
+		store         store.Storable
 		settings      *types.AppSettings
 		notifications AuthNotificationService
 
@@ -41,15 +41,6 @@ type (
 
 	authSubscriptionChecker interface {
 		CanRegister(uint) error
-	}
-
-	authServiceStore interface {
-		usersStore
-		rolesStore
-		roleMembersStore
-		credentialsStore
-
-		CountUsers(context.Context, types.UserFilter) (uint, error)
 	}
 )
 
@@ -678,7 +669,7 @@ func (svc auth) SetPasswordCredentials(ctx context.Context, userID uint64, passw
 	})
 
 	// Do a partial update and soft-delete all
-	if err = svc.store.PartialUpdateCredentials(ctx, []string{"deleted_at"}, cc...); err != nil {
+	if err = svc.store.PartialCredentialsUpdate(ctx, []string{"deleted_at"}, cc...); err != nil {
 		return
 	}
 

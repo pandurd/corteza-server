@@ -6,7 +6,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"os"
 	"path"
-	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 )
@@ -36,6 +36,7 @@ type (
 		Lookups        []*storeTypeLookups       `yaml:"lookups"`
 		PartialUpdates []*storeTypePartialUpdate `yaml:"partialUpdates"`
 		RDBMS          *storeTypeRdbmsDef        `yaml:"rdbms"`
+		Extra          []*storeTypeExtraDef      `yaml:"extra"`
 
 		Search storeTypeSearchDef `yaml:"search"`
 	}
@@ -78,6 +79,17 @@ type (
 		CustomRowScanner      bool `yaml:"customRowScanner"`
 		CustomFilterConverter bool `yaml:"customFilterConverter"`
 		CustomEncoder         bool `yaml:"customEncoder"`
+	}
+
+	storeTypeExtraDef struct {
+		Name    string   `yaml:"name"`
+		XX_Args []string `yaml:"args"`
+		Return  []string `yaml:"return"`
+	}
+
+	storeTypeExtraArgumentDef struct {
+		Name string
+		Type string
 	}
 
 	storeTypeFieldSetDef []*storeTypeFieldDef
@@ -152,10 +164,11 @@ type (
 )
 
 var (
-	outputDir string = "store"
+	outputDir  string = "store"
+	spaceSplit        = regexp.MustCompile(`\s+`)
 )
 
-func procStore() ([]*storeDef, error) {
+func procStore(mm ...string) ([]*storeDef, error) {
 	procDef := func(m string) (*storeDef, error) {
 		def := &storeDef{Source: m}
 		f, err := os.Open(m)
@@ -180,7 +193,7 @@ func procStore() ([]*storeDef, error) {
 		}
 
 		// Always generate interface in store/tests and store/bulk
-		def.Interface = append(def.Interface, "store/tests", "store/bulk")
+		def.Interface = append(def.Interface, "store/bulk")
 
 		if def.Types.Base == "" {
 			def.Types.Base = pubIdent(strings.Split(def.Filename, "_")...)
@@ -318,12 +331,7 @@ func procStore() ([]*storeDef, error) {
 		return def, nil
 	}
 
-	mm, err := filepath.Glob(filepath.Join(outputDir, "*.yaml"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to glob: %w", err)
-	}
-
-	dd := []*storeDef{}
+	dd := make([]*storeDef, 0, len(mm))
 	for _, m := range mm {
 		def, err := procDef(m)
 		if err != nil {
@@ -339,11 +347,11 @@ func procStore() ([]*storeDef, error) {
 // genStore generates all store related code, functions, interfaces...
 //
 // Templates can be found under assets/store*.tpl
-func genStore(tpl *template.Template, dd []*storeDef) (err error) {
+func genStore(tpl *template.Template, dd ...*storeDef) (err error) {
 	var (
 		// general interfaces
 		tplInterfacesJoined = tpl.Lookup("store_interfaces_joined.gen.go.tpl")
-		tplInterfaces       = tpl.Lookup("store_interfaces.gen.go.tpl")
+		tplBase             = tpl.Lookup("store_base.gen.go.tpl")
 
 		// general tests
 		tplTestAll = tpl.Lookup("store_test_all.gen.go.tpl")
@@ -357,11 +365,7 @@ func genStore(tpl *template.Template, dd []*storeDef) (err error) {
 		// @todo mongodb
 		// @todo elasticsearch
 
-		// bulk specific
-		tplBulk = tpl.Lookup("store_bulk.gen.go.tpl")
-
-		dst             string
-		joinedInterface = make(map[string][]*storeDef)
+		dst string
 	)
 
 	// Output all test setup into a single file
@@ -377,40 +381,15 @@ func genStore(tpl *template.Template, dd []*storeDef) (err error) {
 			return
 		}
 
-		dst = path.Join(outputDir, "bulk", d.Filename+".gen.go")
-		if err = goTemplate(dst, tplBulk, d); err != nil {
-			return
-		}
-
-		// Collect and map all interface output locations
-		// and their corresponding definitions
-		for _, dst = range d.Interface {
-			if err = genStoreInterfaces(tplInterfaces, path.Join(dst, "store_interface_"+d.Filename+".gen.go"), path.Base(dst), d); err != nil {
-				return
-			}
-
-			if joinedInterface[dst] == nil {
-				joinedInterface[dst] = make([]*storeDef, 0, len(dd))
-			}
-
-			joinedInterface[dst] = append(joinedInterface[dst], d)
-		}
-	}
-
-	// Add joined interfaces for each interface destination
-	for dst, dd := range joinedInterface {
-		if err = genStoreInterfacesJoined(tplInterfacesJoined, path.Join(dst, "store_interface.gen.go"), path.Base(dst), dd); err != nil {
+		dst = path.Join(outputDir, d.Filename+".gen.go")
+		if err = goTemplate(dst, tplBase, d); err != nil {
 			return
 		}
 	}
 
-	//for _, d := range dd {
-	//	d.Package = "tests"
-	//	dst = path.Join("store/tests", "store_interface_"+d.Filename+".gen.go")
-	//	if err = goTemplate(dst, tplInterfaces, d); err != nil {
-	//		return
-	//	}
-	//}
+	if err = genStoreInterfacesJoined(tplInterfacesJoined, path.Join("store", "interfaces.gen.go"), path.Base(dst), dd); err != nil {
+		return
+	}
 
 	return nil
 }
@@ -472,4 +451,20 @@ func (p storeTypePartialUpdate) Args() []*storeTypeFieldDef {
 	}
 
 	return ff
+}
+
+func (e storeTypeExtraDef) Args() []*storeTypeExtraArgumentDef {
+	aa := make([]*storeTypeExtraArgumentDef, len(e.XX_Args))
+
+	for a := range e.XX_Args {
+		aa[a] = new(storeTypeExtraArgumentDef)
+		ss := spaceSplit.Split(e.XX_Args[a], 2)
+		if len(ss) < 2 || ss[1] == "" {
+			panic("invalid or missing extra argument type")
+		}
+
+		aa[a].Name, aa[a].Type = ss[0], ss[1]
+	}
+
+	return aa
 }

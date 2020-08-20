@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/Masterminds/squirrel"
 	"github.com/cortezaproject/corteza-server/compose/types"
+	"github.com/cortezaproject/corteza-server/pkg/filter"
 	"github.com/cortezaproject/corteza-server/store"
 	"strings"
 )
@@ -77,7 +78,7 @@ func (s Store) SearchComposePages(ctx context.Context, f types.PageFilter) (type
 		// The value for cursor is used and set directly from/to the filter!
 		//
 		// It returns total number of fetched pages and modifies PageCursor value for paging
-		fetchPage = func(cursor *store.PagingCursor, limit uint) (fetched uint, err error) {
+		fetchPage = func(cursor *filter.PagingCursor, limit uint) (fetched uint, err error) {
 			var (
 				res *types.Page
 
@@ -221,10 +222,19 @@ func (s Store) SearchComposePages(ctx context.Context, f types.PageFilter) (type
 	return set, f, s.config.ErrorHandler(fetch())
 }
 
-// LookupComposePageByHandle searches for page chart by handle (case-insensitive)
-func (s Store) LookupComposePageByHandle(ctx context.Context, handle string) (*types.Page, error) {
+// LookupComposePageByNamespaceIDHandle searches for page by handle (case-insensitive)
+func (s Store) LookupComposePageByNamespaceIDHandle(ctx context.Context, namespace_id uint64, handle string) (*types.Page, error) {
 	return s.ComposePageLookup(ctx, squirrel.Eq{
-		"cpg.handle": handle,
+		"cpg.rel_namespace": namespace_id,
+		"cpg.handle":        handle,
+	})
+}
+
+// LookupComposePageByNamespaceIDModuleID searches for page by moduleID
+func (s Store) LookupComposePageByNamespaceIDModuleID(ctx context.Context, namespace_id uint64, module_id uint64) (*types.Page, error) {
+	return s.ComposePageLookup(ctx, squirrel.Eq{
+		"cpg.rel_namespace": namespace_id,
+		"cpg.rel_module":    module_id,
 	})
 }
 
@@ -240,7 +250,7 @@ func (s Store) LookupComposePageByID(ctx context.Context, id uint64) (*types.Pag
 // CreateComposePage creates one or more rows in compose_page table
 func (s Store) CreateComposePage(ctx context.Context, rr ...*types.Page) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Insert(s.ComposePageTable()).SetMap(s.internalComposePageEncoder(res)))
+		err = s.Exec(ctx, s.InsertBuilder(s.ComposePageTable()).SetMap(s.internalComposePageEncoder(res)))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -251,13 +261,11 @@ func (s Store) CreateComposePage(ctx context.Context, rr ...*types.Page) (err er
 
 // UpdateComposePage updates one or more existing rows in compose_page
 func (s Store) UpdateComposePage(ctx context.Context, rr ...*types.Page) error {
-	return s.config.ErrorHandler(s.PartialUpdateComposePage(ctx, nil, rr...))
+	return s.config.ErrorHandler(s.PartialComposePageUpdate(ctx, nil, rr...))
 }
 
-// PartialUpdateComposePage updates one or more existing rows in compose_page
-//
-// It wraps the update into transaction and can perform partial update by providing list of updatable columns
-func (s Store) PartialUpdateComposePage(ctx context.Context, onlyColumns []string, rr ...*types.Page) (err error) {
+// PartialComposePageUpdate updates one or more existing rows in compose_page
+func (s Store) PartialComposePageUpdate(ctx context.Context, onlyColumns []string, rr ...*types.Page) (err error) {
 	for _, res := range rr {
 		err = s.ExecUpdateComposePages(
 			ctx,
@@ -274,7 +282,7 @@ func (s Store) PartialUpdateComposePage(ctx context.Context, onlyColumns []strin
 // RemoveComposePage removes one or more rows from compose_page table
 func (s Store) RemoveComposePage(ctx context.Context, rr ...*types.Page) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Delete(s.ComposePageTable("cpg")).Where(squirrel.Eq{s.preprocessColumn("cpg.id", ""): s.preprocessValue(res.ID, "")}))
+		err = s.Exec(ctx, s.DeleteBuilder(s.ComposePageTable("cpg")).Where(squirrel.Eq{s.preprocessColumn("cpg.id", ""): s.preprocessValue(res.ID, "")}))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -285,17 +293,17 @@ func (s Store) RemoveComposePage(ctx context.Context, rr ...*types.Page) (err er
 
 // RemoveComposePageByID removes row from the compose_page table
 func (s Store) RemoveComposePageByID(ctx context.Context, ID uint64) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Delete(s.ComposePageTable("cpg")).Where(squirrel.Eq{s.preprocessColumn("cpg.id", ""): s.preprocessValue(ID, "")})))
+	return s.config.ErrorHandler(s.Exec(ctx, s.DeleteBuilder(s.ComposePageTable("cpg")).Where(squirrel.Eq{s.preprocessColumn("cpg.id", ""): s.preprocessValue(ID, "")})))
 }
 
 // TruncateComposePages removes all rows from the compose_page table
 func (s Store) TruncateComposePages(ctx context.Context) error {
-	return s.config.ErrorHandler(Truncate(ctx, s.DB(), s.ComposePageTable()))
+	return s.config.ErrorHandler(s.Truncate(ctx, s.ComposePageTable()))
 }
 
 // ExecUpdateComposePages updates all matched (by cnd) rows in compose_page with given data
 func (s Store) ExecUpdateComposePages(ctx context.Context, cnd squirrel.Sqlizer, set store.Payload) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Update(s.ComposePageTable("cpg")).Where(cnd).SetMap(set)))
+	return s.config.ErrorHandler(s.Exec(ctx, s.UpdateBuilder(s.ComposePageTable("cpg")).Where(cnd).SetMap(set)))
 }
 
 // ComposePageLookup prepares ComposePage query and executes it,
@@ -344,7 +352,7 @@ func (s Store) internalComposePageRowScanner(row rowScanner, err error) (*types.
 
 // QueryComposePages returns squirrel.SelectBuilder with set table and all columns
 func (s Store) QueryComposePages() squirrel.SelectBuilder {
-	return s.Select(s.ComposePageTable("cpg"), s.ComposePageColumns("cpg")...)
+	return s.SelectBuilder(s.ComposePageTable("cpg"), s.ComposePageColumns("cpg")...)
 }
 
 // ComposePageTable name of the db table
@@ -419,9 +427,9 @@ func (s Store) internalComposePageEncoder(res *types.Page) store.Payload {
 	}
 }
 
-func (s Store) collectComposePageCursorValues(res *types.Page, cc ...string) *store.PagingCursor {
+func (s Store) collectComposePageCursorValues(res *types.Page, cc ...string) *filter.PagingCursor {
 	var (
-		cursor = &store.PagingCursor{}
+		cursor = &filter.PagingCursor{}
 
 		hasUnique bool
 

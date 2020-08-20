@@ -22,6 +22,10 @@ lookups:
 
       It returns application even if deleted
 
+extra:
+  - name: ApplicationMetrics
+    return: [ "*types.ApplicationMetrics", "error" ]
+
 rdbms:
   alias: app
   table: applications

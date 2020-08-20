@@ -3,12 +3,13 @@ package tests
 import (
 	"context"
 	"github.com/cortezaproject/corteza-server/pkg/permissions"
+	"github.com/cortezaproject/corteza-server/store"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
 
-func testRbacRules(t *testing.T, s rbacRulesStore) {
+func testRbacRules(t *testing.T, s store.RbacRules) {
 	var (
 		ctx = context.Background()
 		req = require.New(t)

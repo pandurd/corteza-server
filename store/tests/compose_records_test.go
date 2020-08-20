@@ -31,8 +31,8 @@ type (
 		//ExecUpdateComposeRecordValues(ctx context.Context, m *types.Module, cnd squirrel.Sqlizer, set store.Payload) error
 		//ComposeRecordLookup(ctx context.Context, m *types.Module, cnd squirrel.Sqlizer) (*types.Record, error)
 		//ComposeRecordValueLookup(ctx context.Context, m *types.Module, cnd squirrel.Sqlizer) (*types.RecordValue, error)
-		//QueryComposeRecords(m *types.Module) squirrel.SelectBuilder
-		//QueryComposeRecordValues(m *types.Module) squirrel.SelectBuilder
+		//QueryComposeRecords(m *types.Module) squirrel.selectBuilder
+		//QueryComposeRecordValues(m *types.Module) squirrel.selectBuilder
 	}
 )
 
@@ -178,7 +178,7 @@ func testComposeRecords(t *testing.T, s composeRecordsStore) {
 //		},
 //		{
 //			name: "simple query",
-//			f:    types.RecordFilter{Query: "id = 5 AND foo = 7"},
+//			f:    types.RecordFilter{query: "id = 5 AND foo = 7"},
 //			match: []string{
 //				"r.id  = 5",
 //				"rv_foo.value  = 7"},
@@ -210,7 +210,7 @@ func testComposeRecords(t *testing.T, s composeRecordsStore) {
 //		},
 //		{
 //			name:  "boolean",
-//			f:     types.RecordFilter{Query: "booly"},
+//			f:     types.RecordFilter{query: "booly"},
 //			match: []string{"(rv_booly.value NOT IN ("},
 //			args:  []interface{}{"booly"},
 //		},

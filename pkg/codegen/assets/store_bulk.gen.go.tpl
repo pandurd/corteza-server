@@ -2,73 +2,174 @@ package bulk
 
 // This file is auto-generated.
 //
+// Template:    pkg/codegen/assets/store_bulk.gen.go.tpl
+// Definitions: {{ .Source }}
+//
 // Changes to this file may cause incorrect behavior and will be lost if
 // the code is regenerated.
 // Definitions file that controls how this file is generated:
-// {{ .Source }}
 
 import (
 	"context"
-{{- range $import := $.Import }}
+{{- range $import := .Import }}
     {{ normalizeImport $import }}
 {{- end }}
 )
 
+
+{{ if not $.Search.Disable }}
+{{ $struct := printf "search%s" ( pubIdent $.Types.Plural ) }}
 type (
-	{{ unpubIdent $.Types.Singular }}Create struct {
-	    Done chan struct{}
-	    res  *{{ $.Types.GoType }}
-	    err  error
-    }
+	{{ $struct }} struct {
+		done chan struct{}
+		err  error
+		set  {{ $.Types.GoSetType }}
+		filter {{ .Types.GoFilterType  }}
+		rfilter {{ .Types.GoFilterType  }}
+	}
+)
 
-	{{ unpubIdent $.Types.Singular }}Update struct {
-	    Done chan struct{}
-	    res  *{{ $.Types.GoType }}
-	    err  error
-    }
+// {{ pubIdent $struct }} returns all matching rows
+//
+// This function calls convert{{ pubIdent $.Types.Singular }}Filter with the given
+func {{ pubIdent $struct }}(filter {{ .Types.GoFilterType  }}) *{{ $struct }} {
+	return &{{ $struct }}{
+		filter: filter,
+		done: make(chan struct{}, 1),
+	}
+}
 
-	{{ unpubIdent $.Types.Singular }}Remove struct {
-	    Done chan struct{}
-	    res  *{{ $.Types.GoType }}
-	    err  error
+// Do executes {{ $struct }} job
+func (j *{{ $struct }}) Do(ctx context.Context, s storeInterface) error {
+	j.set, j.rfilter, j.err = s.{{ pubIdent $struct }}(ctx, j.filter)
+	j.done <- struct{}{}
+	return j.err
+}
+
+// Collect results of ( $.Types.Singular ) Search
+//
+// Note: this function blocks until job is done
+func (j {{ $struct }}) Collect() ({{ $.Types.GoSetType }}, {{ .Types.GoFilterType  }}, error) {
+	<-j.done // block until job gets done
+	return j.set, j.rfilter, j.err
+}
+
+{{ template "Push" $struct }}
+{{ template "GetError" $struct }}
+{{ end }}
+
+{{/* ************************************************************************************************************** */}}
+{{/* ************************************************************************************************************** */}}
+
+{{- range $lookup := $.Lookups }}
+
+{{ $struct := printf "lookup%sBy%s" ( pubIdent $.Types.Singular ) ( pubIdent $lookup.Suffix ) }}
+// {{ $struct }}
+
+
+type (
+	{{ $struct }} struct {
+		done chan struct{}
+		err  error
+		res  *{{ $.Types.GoType }}
+	{{- range $lookup.Fields }}
+		arg{{ pubIdent . }} {{ (. | $.Fields.Find).Type  }}
+	{{- end }}
+	}
+)
+
+
+// {{ pubIdent $struct }} {{ comment $lookup.Description true -}}
+func {{ pubIdent $struct }}({{- range $lookup.Fields }}{{ cc2underscore . }} {{ (. | $.Fields.Find).Type  }}, {{- end }}) *{{ $struct }} {
+	return &{{ $struct }}{
+	{{- range $lookup.Fields }}
+		arg{{ pubIdent . }}: {{ cc2underscore . }},
+	{{- end }}
+		done: make(chan struct{}, 1),
+	}
+}
+
+// Do executes {{ $struct }} job
+func (j *{{ $struct }}) Do(ctx context.Context, s storeInterface) error {
+	j.res, j.err = s.{{ pubIdent $struct }}(
+		ctx,
+		{{- range $lookup.Fields }}
+		j.arg{{ pubIdent . }},
+		{{ end }}
+	)
+
+	j.done <- struct{}{}
+	return j.err
+}
+
+// Collect results of ( $.Types.Singular ) lookup
+//
+// Note: this function blocks until job is done
+func (j *{{ $struct }}) Collect() (*{{ $.Types.GoType }}, error) {
+	<-j.done // block until job gets done
+	return j.res, j.err
+}
+
+{{ template "Push" $struct }}
+{{ template "GetError" $struct }}
+{{ end }}
+
+{{/* ************************************************************************************************************** */}}
+{{/* ************************************************************************************************************** */}}
+
+
+{{ template "Job" ( dict "prefix" "create" "Types" .Types ) }}
+{{ template "Job" ( dict "prefix" "update" "Types" .Types ) }}
+{{ template "Job" ( dict "prefix" "remove" "Types" .Types ) }}
+
+
+{{/* ************************************************************************************************************** */}}
+{{/* ************************************************************************************************************** */}}
+
+
+{{- define "Job" -}}
+{{ $struct := printf "%s%s" .prefix ( pubIdent $.Types.Singular ) }}
+type (
+	{{ $struct }} struct {
+	    done chan struct{}
+		err  error
+		res  *{{ .Types.GoType }}
     }
 )
 
-// Create{{ pubIdent $.Types.Singular }} creates a new {{ pubIdent $.Types.Singular }}
-// create job that can be pushed to store's transaction handler
-func Create{{ pubIdent $.Types.Singular }}(res *{{ $.Types.GoType }}) *{{ unpubIdent $.Types.Singular }}Create {
-    return &{{ unpubIdent $.Types.Singular }}Create{res: res}
+// {{ pubIdent $struct }} creates a new {{ .prefix }} job for {{ pubIdent .Types.Singular }} that can be pushed to store's transaction handler
+func {{ pubIdent $struct }}(res *{{ .Types.GoType }}) *{{ $struct }} {
+    return &{{ $struct }}{res: res, done: make(chan struct{}, 1)}
 }
 
-// Do Executes {{ unpubIdent $.Types.Singular }}Create job
-func (j *{{ unpubIdent $.Types.Singular }}Create) Do(ctx context.Context, s storeInterface) error {
-	j.err = s.Create{{ pubIdent $.Types.Singular }}(ctx, j.res)
-	j.Done <- struct{}{}
+// Do Executes {{ $struct }} job
+//
+func (j *{{ $struct }}) Do(ctx context.Context, s storeInterface) error {
+	j.err = s.{{ pubIdent $struct }}(ctx, j.res)
+	j.done <- struct{}{}
 	return j.err
 }
 
-// Update{{ pubIdent $.Types.Singular }} creates a new {{ pubIdent $.Types.Singular }}
-// update job that can be pushed to store's transaction handler
-func Update{{ pubIdent $.Types.Singular }}(res *{{ $.Types.GoType }}) *{{ unpubIdent $.Types.Singular }}Update {
-    return &{{ unpubIdent $.Types.Singular }}Update{res: res}
-}
+{{ template "Push" $struct }}
+{{ template "GetError" $struct }}
+{{- end -}}
 
-// Do Executes {{ unpubIdent $.Types.Singular }}Update job
-func (j *{{ unpubIdent $.Types.Singular }}Update) Do(ctx context.Context, s storeInterface) error {
-	j.err = s.Update{{ pubIdent $.Types.Singular }}(ctx, j.res)
-	j.Done <- struct{}{}
+{{- define "GetError" -}}
+// GetError returns job error (if any)
+//
+// Note: this function blocks until job is done
+func (j {{ . }}) GetError() error {
+	<-j.done // block until job gets done
 	return j.err
 }
+{{- end -}}
 
-// Remove{{ pubIdent $.Types.Singular }} creates a new {{ pubIdent $.Types.Singular }}
-// remove job that can be pushed to store's transaction handler
-func Remove{{ pubIdent $.Types.Singular }}(res *{{ $.Types.GoType }}) *{{ unpubIdent $.Types.Singular }}Remove {
-    return &{{ unpubIdent $.Types.Singular }}Remove{res: res}
+{{- define "Push" -}}
+// Push accepts transaction channel and returns struct
+//
+// A small helper that allows more fluid development
+func (j *{{ . }}) Push(tx chan <- Job) *{{ . }} {
+	tx <- j
+	return j
 }
-
-// Do Executes {{ unpubIdent $.Types.Singular }}Remove job
-func (j *{{ unpubIdent $.Types.Singular }}Remove) Do(ctx context.Context, s storeInterface) error {
-	j.err = s.Remove{{ pubIdent $.Types.Singular }}(ctx, j.res)
-	j.Done <- struct{}{}
-	return j.err
-}
+{{- end -}}

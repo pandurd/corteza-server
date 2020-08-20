@@ -15,6 +15,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/cortezaproject/corteza-server/store"
 {{- if not $.Search.DisablePaging }}
+	"github.com/cortezaproject/corteza-server/pkg/filter"
 	"strings"
 {{- end }}
 {{- range $import := $.Import }}
@@ -56,10 +57,10 @@ func (s Store) Search{{ pubIdent $.Types.Plural }}(ctx context.Context, f {{ $.T
 	// {search: {disableSorting:true}}
 	//
 	// We still need to sort the results by primary key for paging purposes
-	sort := store.SortExprSet{
+	sort := filter.SortExprSet{
 	{{ range $.Fields }}
 		{{- if or .IsPrimaryKey -}}
-			&store.SortExpr{Column: {{ printf "%q" .Column  }}, {{ if .SortDescending }}Descending: true, {{ end }}},
+			&filter.SortExpr{Column: {{ printf "%q" .Column  }}, {{ if .SortDescending }}Descending: true, {{ end }}},
 		{{- end }}
 	{{- end }}
 	}
@@ -136,7 +137,7 @@ func (s Store) Search{{ pubIdent $.Types.Plural }}(ctx context.Context, f {{ $.T
 		// The value for cursor is used and set directly from/to the filter!
 		//
 		// It returns total number of fetched pages and modifies PageCursor value for paging
-		fetchPage = func(cursor *store.PagingCursor, limit uint) (fetched uint, err error) {
+		fetchPage = func(cursor *filter.PagingCursor, limit uint) (fetched uint, err error) {
 			var (
 				res *{{ $.Types.GoType }}
 
@@ -301,7 +302,7 @@ func (s Store) Lookup{{ pubIdent $.Types.Singular }}By{{ pubIdent $lookup.Suffix
 // Create{{ pubIdent $.Types.Singular }} creates one or more rows in {{ $.RDBMS.Table }} table
 func (s Store) Create{{ pubIdent $.Types.Singular }}(ctx context.Context, rr ... *{{ $.Types.GoType }}) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Insert(s.{{ $.Types.Singular }}Table()).SetMap(s.internal{{ pubIdent $.Types.Singular }}Encoder(res)))
+		err = s.Exec(ctx, s.InsertBuilder(s.{{ $.Types.Singular }}Table()).SetMap(s.internal{{ pubIdent $.Types.Singular }}Encoder(res)))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -312,13 +313,11 @@ func (s Store) Create{{ pubIdent $.Types.Singular }}(ctx context.Context, rr ...
 
 // Update{{ pubIdent $.Types.Singular }} updates one or more existing rows in {{ $.RDBMS.Table }}
 func (s Store) Update{{ pubIdent $.Types.Singular }}(ctx context.Context, rr ... *{{ $.Types.GoType }}) error {
-	return s.config.ErrorHandler(s.PartialUpdate{{ pubIdent $.Types.Singular }}(ctx, nil, rr...))
+	return s.config.ErrorHandler(s.Partial{{ pubIdent $.Types.Singular }}Update(ctx, nil, rr...))
 }
 
-// PartialUpdate{{ pubIdent $.Types.Singular }} updates one or more existing rows in {{ $.RDBMS.Table }}
-//
-// It wraps the update into transaction and can perform partial update by providing list of updatable columns
-func (s Store) PartialUpdate{{ pubIdent $.Types.Singular }}(ctx context.Context, onlyColumns []string, rr ... *{{ $.Types.GoType }}) (err error) {
+// Partial{{ pubIdent $.Types.Singular }}Update updates one or more existing rows in {{ $.RDBMS.Table }}
+func (s Store) Partial{{ pubIdent $.Types.Singular }}Update(ctx context.Context, onlyColumns []string, rr ... *{{ $.Types.GoType }}) (err error) {
 	for _, res := range rr {
 		err = s.ExecUpdate{{ pubIdent $.Types.Plural }}(
 			ctx,
@@ -341,7 +340,7 @@ func (s Store) PartialUpdate{{ pubIdent $.Types.Singular }}(ctx context.Context,
 // Remove{{ pubIdent $.Types.Singular }} removes one or more rows from {{ $.RDBMS.Table }} table
 func (s Store) Remove{{ pubIdent $.Types.Singular }}(ctx context.Context, rr ... *{{ $.Types.GoType }}) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Delete(s.{{ $.Types.Singular }}Table({{ printf "%q" .RDBMS.Alias }})).Where({{ template "filterByPrimaryKeys" $.Fields }},))
+		err = s.Exec(ctx, s.DeleteBuilder(s.{{ $.Types.Singular }}Table({{ printf "%q" .RDBMS.Alias }})).Where({{ template "filterByPrimaryKeys" $.Fields }},))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -352,20 +351,20 @@ func (s Store) Remove{{ pubIdent $.Types.Singular }}(ctx context.Context, rr ...
 
 
 // Remove{{ pubIdent $.Types.Singular }}By{{ template "primaryKeySuffix" $.Fields }} removes row from the {{ $.RDBMS.Table }} table
-func (s Store) Remove{{ pubIdent $.Types.Singular }}By{{ template "primaryKeySuffix" $.Fields }}(ctx context.Context {{ template "primaryKeyArgs" $.Fields }}) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), 	s.Delete(s.{{ $.Types.Singular }}Table({{ printf "%q" .RDBMS.Alias }})).Where({{ template "filterByPrimaryKeysWithArgs" $.Fields }},)))
+func (s Store) Remove{{ pubIdent $.Types.Singular }}By{{ template "primaryKeySuffix" $.Fields }}(ctx context.Context {{ template "primaryKeyArgsIn" $.Fields }}) error {
+	return s.config.ErrorHandler(s.Exec(ctx, s.DeleteBuilder(s.{{ $.Types.Singular }}Table({{ printf "%q" .RDBMS.Alias }})).Where({{ template "filterByPrimaryKeysWithArgs" $.Fields }},)))
 }
 
 
 // Truncate{{ pubIdent $.Types.Plural }} removes all rows from the {{ $.RDBMS.Table }} table
 func (s Store) Truncate{{ pubIdent $.Types.Plural }}(ctx context.Context) error {
-	return s.config.ErrorHandler(Truncate(ctx, s.DB(), s.{{ $.Types.Singular }}Table()))
+	return s.config.ErrorHandler(s.Truncate(ctx, s.{{ $.Types.Singular }}Table()))
 }
 
 
 // ExecUpdate{{ pubIdent $.Types.Plural }} updates all matched (by cnd) rows in {{ $.RDBMS.Table }} with given data
 func (s Store) ExecUpdate{{ pubIdent $.Types.Plural }}(ctx context.Context, cnd squirrel.Sqlizer, set store.Payload) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), 	s.Update(s.{{ $.Types.Singular }}Table({{ printf "%q" .RDBMS.Alias }})).Where(cnd).SetMap(set)))
+	return s.config.ErrorHandler(s.Exec(ctx, s.UpdateBuilder(s.{{ $.Types.Singular }}Table({{ printf "%q" .RDBMS.Alias }})).Where(cnd).SetMap(set)))
 }
 
 // {{ $.Types.Singular }}Lookup prepares {{ $.Types.Singular }} query and executes it,
@@ -408,7 +407,7 @@ func (s Store) internal{{ $.Types.Singular }}RowScanner(row rowScanner, err erro
 
 // Query{{ pubIdent $.Types.Plural }} returns squirrel.SelectBuilder with set table and all columns
 func (s Store) Query{{ pubIdent $.Types.Plural }}() squirrel.SelectBuilder {
-	return s.Select(s.{{ $.Types.Singular }}Table({{ printf "%q" .RDBMS.Alias }}), s.{{ $.Types.Singular }}Columns({{ printf "%q" $.RDBMS.Alias }})...)
+	return s.SelectBuilder(s.{{ $.Types.Singular }}Table({{ printf "%q" .RDBMS.Alias }}), s.{{ $.Types.Singular }}Columns({{ printf "%q" $.RDBMS.Alias }})...)
 }
 
 // {{ $.Types.Singular }}Table name of the db table
@@ -471,9 +470,9 @@ func (s Store) internal{{ pubIdent $.Types.Singular }}Encoder(res *{{ $.Types.Go
 }
 
 {{ if not $.Search.DisablePaging }}
-func (s Store) collect{{ pubIdent $.Types.Singular }}CursorValues(res *{{ $.Types.GoType }}, cc ...string) *store.PagingCursor {
+func (s Store) collect{{ pubIdent $.Types.Singular }}CursorValues(res *{{ $.Types.GoType }}, cc ...string) *filter.PagingCursor {
 	var (
-		cursor = &store.PagingCursor{}
+		cursor = &filter.PagingCursor{}
 
 		hasUnique bool
 

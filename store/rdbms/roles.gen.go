@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/Masterminds/squirrel"
+	"github.com/cortezaproject/corteza-server/pkg/filter"
 	"github.com/cortezaproject/corteza-server/store"
 	"github.com/cortezaproject/corteza-server/system/types"
 	"strings"
@@ -77,7 +78,7 @@ func (s Store) SearchRoles(ctx context.Context, f types.RoleFilter) (types.RoleS
 		// The value for cursor is used and set directly from/to the filter!
 		//
 		// It returns total number of fetched pages and modifies PageCursor value for paging
-		fetchPage = func(cursor *store.PagingCursor, limit uint) (fetched uint, err error) {
+		fetchPage = func(cursor *filter.PagingCursor, limit uint) (fetched uint, err error) {
 			var (
 				res *types.Role
 
@@ -255,7 +256,7 @@ func (s Store) LookupRoleByName(ctx context.Context, name string) (*types.Role, 
 // CreateRole creates one or more rows in roles table
 func (s Store) CreateRole(ctx context.Context, rr ...*types.Role) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Insert(s.RoleTable()).SetMap(s.internalRoleEncoder(res)))
+		err = s.Exec(ctx, s.InsertBuilder(s.RoleTable()).SetMap(s.internalRoleEncoder(res)))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -266,13 +267,11 @@ func (s Store) CreateRole(ctx context.Context, rr ...*types.Role) (err error) {
 
 // UpdateRole updates one or more existing rows in roles
 func (s Store) UpdateRole(ctx context.Context, rr ...*types.Role) error {
-	return s.config.ErrorHandler(s.PartialUpdateRole(ctx, nil, rr...))
+	return s.config.ErrorHandler(s.PartialRoleUpdate(ctx, nil, rr...))
 }
 
-// PartialUpdateRole updates one or more existing rows in roles
-//
-// It wraps the update into transaction and can perform partial update by providing list of updatable columns
-func (s Store) PartialUpdateRole(ctx context.Context, onlyColumns []string, rr ...*types.Role) (err error) {
+// PartialRoleUpdate updates one or more existing rows in roles
+func (s Store) PartialRoleUpdate(ctx context.Context, onlyColumns []string, rr ...*types.Role) (err error) {
 	for _, res := range rr {
 		err = s.ExecUpdateRoles(
 			ctx,
@@ -289,7 +288,7 @@ func (s Store) PartialUpdateRole(ctx context.Context, onlyColumns []string, rr .
 // RemoveRole removes one or more rows from roles table
 func (s Store) RemoveRole(ctx context.Context, rr ...*types.Role) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Delete(s.RoleTable("rl")).Where(squirrel.Eq{s.preprocessColumn("rl.id", ""): s.preprocessValue(res.ID, "")}))
+		err = s.Exec(ctx, s.DeleteBuilder(s.RoleTable("rl")).Where(squirrel.Eq{s.preprocessColumn("rl.id", ""): s.preprocessValue(res.ID, "")}))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -300,17 +299,17 @@ func (s Store) RemoveRole(ctx context.Context, rr ...*types.Role) (err error) {
 
 // RemoveRoleByID removes row from the roles table
 func (s Store) RemoveRoleByID(ctx context.Context, ID uint64) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Delete(s.RoleTable("rl")).Where(squirrel.Eq{s.preprocessColumn("rl.id", ""): s.preprocessValue(ID, "")})))
+	return s.config.ErrorHandler(s.Exec(ctx, s.DeleteBuilder(s.RoleTable("rl")).Where(squirrel.Eq{s.preprocessColumn("rl.id", ""): s.preprocessValue(ID, "")})))
 }
 
 // TruncateRoles removes all rows from the roles table
 func (s Store) TruncateRoles(ctx context.Context) error {
-	return s.config.ErrorHandler(Truncate(ctx, s.DB(), s.RoleTable()))
+	return s.config.ErrorHandler(s.Truncate(ctx, s.RoleTable()))
 }
 
 // ExecUpdateRoles updates all matched (by cnd) rows in roles with given data
 func (s Store) ExecUpdateRoles(ctx context.Context, cnd squirrel.Sqlizer, set store.Payload) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Update(s.RoleTable("rl")).Where(cnd).SetMap(set)))
+	return s.config.ErrorHandler(s.Exec(ctx, s.UpdateBuilder(s.RoleTable("rl")).Where(cnd).SetMap(set)))
 }
 
 // RoleLookup prepares Role query and executes it,
@@ -353,7 +352,7 @@ func (s Store) internalRoleRowScanner(row rowScanner, err error) (*types.Role, e
 
 // QueryRoles returns squirrel.SelectBuilder with set table and all columns
 func (s Store) QueryRoles() squirrel.SelectBuilder {
-	return s.Select(s.RoleTable("rl"), s.RoleColumns("rl")...)
+	return s.SelectBuilder(s.RoleTable("rl"), s.RoleColumns("rl")...)
 }
 
 // RoleTable name of the db table
@@ -419,9 +418,9 @@ func (s Store) internalRoleEncoder(res *types.Role) store.Payload {
 	}
 }
 
-func (s Store) collectRoleCursorValues(res *types.Role, cc ...string) *store.PagingCursor {
+func (s Store) collectRoleCursorValues(res *types.Role, cc ...string) *filter.PagingCursor {
 	var (
-		cursor = &store.PagingCursor{}
+		cursor = &filter.PagingCursor{}
 
 		hasUnique bool
 

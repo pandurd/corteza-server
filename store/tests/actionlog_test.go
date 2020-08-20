@@ -3,13 +3,14 @@ package tests
 import (
 	"context"
 	"github.com/cortezaproject/corteza-server/pkg/actionlog"
+	"github.com/cortezaproject/corteza-server/store"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
 )
 
-func testActionlog(t *testing.T, s actionlogsStore) {
+func testActionlog(t *testing.T, s store.Actionlogs) {
 	var (
 		ctx = context.Background()
 		req = require.New(t)

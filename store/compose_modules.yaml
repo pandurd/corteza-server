@@ -19,9 +19,13 @@ fields:
 
 
 lookups:
-  - fields: [ Handle ]
+  - fields: [ NamespaceID, Handle ]
     description: |-
       searches for compose module by handle (case-insensitive)
+
+  - fields: [ NamespaceID, Name ]
+    description: |-
+      searches for compose module by name (case-insensitive)
 
   - fields: [ ID ]
     description: |-

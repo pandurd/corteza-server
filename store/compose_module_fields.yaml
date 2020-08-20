@@ -32,4 +32,5 @@ rdbms:
 
 
 search:
-  disable: true
+  disablePaging: true
+  disableSorting: true

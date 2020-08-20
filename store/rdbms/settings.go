@@ -61,9 +61,9 @@ func (s Store) convertSettingFilter(f types.SettingsFilter) (query squirrel.Sele
 //	return v, err
 //}
 //
-//// Returns squirrel.SelectBuilder
-//func (s Store) QuerySettings() squirrel.SelectBuilder {
-//	return s.Select(s.SettingsTable()+" AS stngs", s.SettingsColumns()...)
+//// Returns squirrel.selectBuilder
+//func (s Store) QuerySettings() squirrel.selectBuilder {
+//	return s.selectBuilder(s.SettingsTable()+" AS stngs", s.SettingsColumns()...)
 //}
 //
 //// Name of the db table

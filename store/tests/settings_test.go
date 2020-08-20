@@ -1,10 +1,11 @@
 package tests
 
 import (
+	"github.com/cortezaproject/corteza-server/store"
 	"testing"
 )
 
-func testSettings(t *testing.T, s settingsStore) {
+func testSettings(t *testing.T, s store.Settings) {
 	t.Run("create", func(t *testing.T) {
 		t.Skip("not implemented")
 	})

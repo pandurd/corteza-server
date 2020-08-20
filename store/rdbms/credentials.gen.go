@@ -78,7 +78,7 @@ func (s Store) LookupCredentialsByID(ctx context.Context, id uint64) (*types.Cre
 // CreateCredentials creates one or more rows in credentials table
 func (s Store) CreateCredentials(ctx context.Context, rr ...*types.Credentials) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Insert(s.CredentialsTable()).SetMap(s.internalCredentialsEncoder(res)))
+		err = s.Exec(ctx, s.InsertBuilder(s.CredentialsTable()).SetMap(s.internalCredentialsEncoder(res)))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -89,13 +89,11 @@ func (s Store) CreateCredentials(ctx context.Context, rr ...*types.Credentials) 
 
 // UpdateCredentials updates one or more existing rows in credentials
 func (s Store) UpdateCredentials(ctx context.Context, rr ...*types.Credentials) error {
-	return s.config.ErrorHandler(s.PartialUpdateCredentials(ctx, nil, rr...))
+	return s.config.ErrorHandler(s.PartialCredentialsUpdate(ctx, nil, rr...))
 }
 
-// PartialUpdateCredentials updates one or more existing rows in credentials
-//
-// It wraps the update into transaction and can perform partial update by providing list of updatable columns
-func (s Store) PartialUpdateCredentials(ctx context.Context, onlyColumns []string, rr ...*types.Credentials) (err error) {
+// PartialCredentialsUpdate updates one or more existing rows in credentials
+func (s Store) PartialCredentialsUpdate(ctx context.Context, onlyColumns []string, rr ...*types.Credentials) (err error) {
 	for _, res := range rr {
 		err = s.ExecUpdateCredentials(
 			ctx,
@@ -112,7 +110,7 @@ func (s Store) PartialUpdateCredentials(ctx context.Context, onlyColumns []strin
 // RemoveCredentials removes one or more rows from credentials table
 func (s Store) RemoveCredentials(ctx context.Context, rr ...*types.Credentials) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Delete(s.CredentialsTable("crd")).Where(squirrel.Eq{s.preprocessColumn("crd.id", ""): s.preprocessValue(res.ID, "")}))
+		err = s.Exec(ctx, s.DeleteBuilder(s.CredentialsTable("crd")).Where(squirrel.Eq{s.preprocessColumn("crd.id", ""): s.preprocessValue(res.ID, "")}))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -123,17 +121,17 @@ func (s Store) RemoveCredentials(ctx context.Context, rr ...*types.Credentials) 
 
 // RemoveCredentialsByID removes row from the credentials table
 func (s Store) RemoveCredentialsByID(ctx context.Context, ID uint64) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Delete(s.CredentialsTable("crd")).Where(squirrel.Eq{s.preprocessColumn("crd.id", ""): s.preprocessValue(ID, "")})))
+	return s.config.ErrorHandler(s.Exec(ctx, s.DeleteBuilder(s.CredentialsTable("crd")).Where(squirrel.Eq{s.preprocessColumn("crd.id", ""): s.preprocessValue(ID, "")})))
 }
 
 // TruncateCredentials removes all rows from the credentials table
 func (s Store) TruncateCredentials(ctx context.Context) error {
-	return s.config.ErrorHandler(Truncate(ctx, s.DB(), s.CredentialsTable()))
+	return s.config.ErrorHandler(s.Truncate(ctx, s.CredentialsTable()))
 }
 
 // ExecUpdateCredentials updates all matched (by cnd) rows in credentials with given data
 func (s Store) ExecUpdateCredentials(ctx context.Context, cnd squirrel.Sqlizer, set store.Payload) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Update(s.CredentialsTable("crd")).Where(cnd).SetMap(set)))
+	return s.config.ErrorHandler(s.Exec(ctx, s.UpdateBuilder(s.CredentialsTable("crd")).Where(cnd).SetMap(set)))
 }
 
 // CredentialsLookup prepares Credentials query and executes it,
@@ -180,7 +178,7 @@ func (s Store) internalCredentialsRowScanner(row rowScanner, err error) (*types.
 
 // QueryCredentials returns squirrel.SelectBuilder with set table and all columns
 func (s Store) QueryCredentials() squirrel.SelectBuilder {
-	return s.Select(s.CredentialsTable("crd"), s.CredentialsColumns("crd")...)
+	return s.SelectBuilder(s.CredentialsTable("crd"), s.CredentialsColumns("crd")...)
 }
 
 // CredentialsTable name of the db table

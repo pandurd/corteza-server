@@ -66,7 +66,7 @@ func (s Store) SearchRoleMembers(ctx context.Context, f types.RoleMemberFilter) 
 // CreateRoleMember creates one or more rows in role_members table
 func (s Store) CreateRoleMember(ctx context.Context, rr ...*types.RoleMember) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Insert(s.RoleMemberTable()).SetMap(s.internalRoleMemberEncoder(res)))
+		err = s.Exec(ctx, s.InsertBuilder(s.RoleMemberTable()).SetMap(s.internalRoleMemberEncoder(res)))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -77,13 +77,11 @@ func (s Store) CreateRoleMember(ctx context.Context, rr ...*types.RoleMember) (e
 
 // UpdateRoleMember updates one or more existing rows in role_members
 func (s Store) UpdateRoleMember(ctx context.Context, rr ...*types.RoleMember) error {
-	return s.config.ErrorHandler(s.PartialUpdateRoleMember(ctx, nil, rr...))
+	return s.config.ErrorHandler(s.PartialRoleMemberUpdate(ctx, nil, rr...))
 }
 
-// PartialUpdateRoleMember updates one or more existing rows in role_members
-//
-// It wraps the update into transaction and can perform partial update by providing list of updatable columns
-func (s Store) PartialUpdateRoleMember(ctx context.Context, onlyColumns []string, rr ...*types.RoleMember) (err error) {
+// PartialRoleMemberUpdate updates one or more existing rows in role_members
+func (s Store) PartialRoleMemberUpdate(ctx context.Context, onlyColumns []string, rr ...*types.RoleMember) (err error) {
 	for _, res := range rr {
 		err = s.ExecUpdateRoleMembers(
 			ctx,
@@ -102,7 +100,7 @@ func (s Store) PartialUpdateRoleMember(ctx context.Context, onlyColumns []string
 // RemoveRoleMember removes one or more rows from role_members table
 func (s Store) RemoveRoleMember(ctx context.Context, rr ...*types.RoleMember) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Delete(s.RoleMemberTable("rm")).Where(squirrel.Eq{s.preprocessColumn("rm.rel_user", ""): s.preprocessValue(res.UserID, ""),
+		err = s.Exec(ctx, s.DeleteBuilder(s.RoleMemberTable("rm")).Where(squirrel.Eq{s.preprocessColumn("rm.rel_user", ""): s.preprocessValue(res.UserID, ""),
 			s.preprocessColumn("rm.rel_role", ""): s.preprocessValue(res.RoleID, ""),
 		}))
 		if err != nil {
@@ -115,7 +113,7 @@ func (s Store) RemoveRoleMember(ctx context.Context, rr ...*types.RoleMember) (e
 
 // RemoveRoleMemberByUserIDRoleID removes row from the role_members table
 func (s Store) RemoveRoleMemberByUserIDRoleID(ctx context.Context, userID uint64, roleID uint64) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Delete(s.RoleMemberTable("rm")).Where(squirrel.Eq{s.preprocessColumn("rm.rel_user", ""): s.preprocessValue(userID, ""),
+	return s.config.ErrorHandler(s.Exec(ctx, s.DeleteBuilder(s.RoleMemberTable("rm")).Where(squirrel.Eq{s.preprocessColumn("rm.rel_user", ""): s.preprocessValue(userID, ""),
 
 		s.preprocessColumn("rm.rel_role", ""): s.preprocessValue(roleID, ""),
 	})))
@@ -123,12 +121,12 @@ func (s Store) RemoveRoleMemberByUserIDRoleID(ctx context.Context, userID uint64
 
 // TruncateRoleMembers removes all rows from the role_members table
 func (s Store) TruncateRoleMembers(ctx context.Context) error {
-	return s.config.ErrorHandler(Truncate(ctx, s.DB(), s.RoleMemberTable()))
+	return s.config.ErrorHandler(s.Truncate(ctx, s.RoleMemberTable()))
 }
 
 // ExecUpdateRoleMembers updates all matched (by cnd) rows in role_members with given data
 func (s Store) ExecUpdateRoleMembers(ctx context.Context, cnd squirrel.Sqlizer, set store.Payload) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Update(s.RoleMemberTable("rm")).Where(cnd).SetMap(set)))
+	return s.config.ErrorHandler(s.Exec(ctx, s.UpdateBuilder(s.RoleMemberTable("rm")).Where(cnd).SetMap(set)))
 }
 
 // RoleMemberLookup prepares RoleMember query and executes it,
@@ -166,7 +164,7 @@ func (s Store) internalRoleMemberRowScanner(row rowScanner, err error) (*types.R
 
 // QueryRoleMembers returns squirrel.SelectBuilder with set table and all columns
 func (s Store) QueryRoleMembers() squirrel.SelectBuilder {
-	return s.Select(s.RoleMemberTable("rm"), s.RoleMemberColumns("rm")...)
+	return s.SelectBuilder(s.RoleMemberTable("rm"), s.RoleMemberColumns("rm")...)
 }
 
 // RoleMemberTable name of the db table

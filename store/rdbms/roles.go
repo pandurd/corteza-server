@@ -40,24 +40,24 @@ func (s Store) convertRoleFilter(f types.RoleFilter) (query squirrel.SelectBuild
 	return
 }
 
-func (s Store) RoleMetrics(ctx context.Context) (rval *types.RoleMetrics, err error) {
+func (s Store) RoleMetrics(ctx context.Context) (*types.RoleMetrics, error) {
 	var (
 		counters = squirrel.
-			Select(
+				Select(
 				"COUNT(*) as total",
 				"SUM(IF(deleted_at IS NULL, 0, 1)) as deleted",
 				"SUM(IF(archived_at IS NULL, 0, 1)) as archived",
 				"SUM(IF(deleted_at IS NULL AND archived_at IS NULL, 1, 0)) as valid",
 			).
 			From(s.UserTable("u"))
+
+		rval     = &types.RoleMetrics{}
+		row, err = s.QueryRow(ctx, counters)
 	)
 
-	rval = &types.RoleMetrics{}
-
-	var (
-		sql, args = counters.MustSql()
-		row       = s.db.QueryRowContext(ctx, sql, args...)
-	)
+	if err != nil {
+		return nil, err
+	}
 
 	err = row.Scan(&rval.Total, &rval.Deleted, &rval.Archived, &rval.Valid)
 	if err != nil {
@@ -81,8 +81,8 @@ func (s Store) RoleMetrics(ctx context.Context) (rval *types.RoleMetrics, err er
 	)
 
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	return
+	return rval, nil
 }

@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/Masterminds/squirrel"
+	"github.com/cortezaproject/corteza-server/pkg/filter"
 	"github.com/cortezaproject/corteza-server/store"
 	"github.com/cortezaproject/corteza-server/system/types"
 	"strings"
@@ -77,7 +78,7 @@ func (s Store) SearchReminders(ctx context.Context, f types.ReminderFilter) (typ
 		// The value for cursor is used and set directly from/to the filter!
 		//
 		// It returns total number of fetched pages and modifies PageCursor value for paging
-		fetchPage = func(cursor *store.PagingCursor, limit uint) (fetched uint, err error) {
+		fetchPage = func(cursor *filter.PagingCursor, limit uint) (fetched uint, err error) {
 			var (
 				res *types.Reminder
 
@@ -233,7 +234,7 @@ func (s Store) LookupReminderByID(ctx context.Context, id uint64) (*types.Remind
 // CreateReminder creates one or more rows in reminders table
 func (s Store) CreateReminder(ctx context.Context, rr ...*types.Reminder) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Insert(s.ReminderTable()).SetMap(s.internalReminderEncoder(res)))
+		err = s.Exec(ctx, s.InsertBuilder(s.ReminderTable()).SetMap(s.internalReminderEncoder(res)))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -244,13 +245,11 @@ func (s Store) CreateReminder(ctx context.Context, rr ...*types.Reminder) (err e
 
 // UpdateReminder updates one or more existing rows in reminders
 func (s Store) UpdateReminder(ctx context.Context, rr ...*types.Reminder) error {
-	return s.config.ErrorHandler(s.PartialUpdateReminder(ctx, nil, rr...))
+	return s.config.ErrorHandler(s.PartialReminderUpdate(ctx, nil, rr...))
 }
 
-// PartialUpdateReminder updates one or more existing rows in reminders
-//
-// It wraps the update into transaction and can perform partial update by providing list of updatable columns
-func (s Store) PartialUpdateReminder(ctx context.Context, onlyColumns []string, rr ...*types.Reminder) (err error) {
+// PartialReminderUpdate updates one or more existing rows in reminders
+func (s Store) PartialReminderUpdate(ctx context.Context, onlyColumns []string, rr ...*types.Reminder) (err error) {
 	for _, res := range rr {
 		err = s.ExecUpdateReminders(
 			ctx,
@@ -267,7 +266,7 @@ func (s Store) PartialUpdateReminder(ctx context.Context, onlyColumns []string, 
 // RemoveReminder removes one or more rows from reminders table
 func (s Store) RemoveReminder(ctx context.Context, rr ...*types.Reminder) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Delete(s.ReminderTable("rmd")).Where(squirrel.Eq{s.preprocessColumn("rmd.id", ""): s.preprocessValue(res.ID, "")}))
+		err = s.Exec(ctx, s.DeleteBuilder(s.ReminderTable("rmd")).Where(squirrel.Eq{s.preprocessColumn("rmd.id", ""): s.preprocessValue(res.ID, "")}))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -278,17 +277,17 @@ func (s Store) RemoveReminder(ctx context.Context, rr ...*types.Reminder) (err e
 
 // RemoveReminderByID removes row from the reminders table
 func (s Store) RemoveReminderByID(ctx context.Context, ID uint64) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Delete(s.ReminderTable("rmd")).Where(squirrel.Eq{s.preprocessColumn("rmd.id", ""): s.preprocessValue(ID, "")})))
+	return s.config.ErrorHandler(s.Exec(ctx, s.DeleteBuilder(s.ReminderTable("rmd")).Where(squirrel.Eq{s.preprocessColumn("rmd.id", ""): s.preprocessValue(ID, "")})))
 }
 
 // TruncateReminders removes all rows from the reminders table
 func (s Store) TruncateReminders(ctx context.Context) error {
-	return s.config.ErrorHandler(Truncate(ctx, s.DB(), s.ReminderTable()))
+	return s.config.ErrorHandler(s.Truncate(ctx, s.ReminderTable()))
 }
 
 // ExecUpdateReminders updates all matched (by cnd) rows in reminders with given data
 func (s Store) ExecUpdateReminders(ctx context.Context, cnd squirrel.Sqlizer, set store.Payload) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Update(s.ReminderTable("rmd")).Where(cnd).SetMap(set)))
+	return s.config.ErrorHandler(s.Exec(ctx, s.UpdateBuilder(s.ReminderTable("rmd")).Where(cnd).SetMap(set)))
 }
 
 // ReminderLookup prepares Reminder query and executes it,
@@ -337,7 +336,7 @@ func (s Store) internalReminderRowScanner(row rowScanner, err error) (*types.Rem
 
 // QueryReminders returns squirrel.SelectBuilder with set table and all columns
 func (s Store) QueryReminders() squirrel.SelectBuilder {
-	return s.Select(s.ReminderTable("rmd"), s.ReminderColumns("rmd")...)
+	return s.SelectBuilder(s.ReminderTable("rmd"), s.ReminderColumns("rmd")...)
 }
 
 // ReminderTable name of the db table
@@ -413,9 +412,9 @@ func (s Store) internalReminderEncoder(res *types.Reminder) store.Payload {
 	}
 }
 
-func (s Store) collectReminderCursorValues(res *types.Reminder, cc ...string) *store.PagingCursor {
+func (s Store) collectReminderCursorValues(res *types.Reminder, cc ...string) *filter.PagingCursor {
 	var (
-		cursor = &store.PagingCursor{}
+		cursor = &filter.PagingCursor{}
 
 		hasUnique bool
 

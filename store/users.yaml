@@ -43,6 +43,13 @@ lookups:
 
       It returns only valid users (not deleted, not suspended)
 
+extra:
+  - name: CountUsers
+    args: [ "f types.UserFilter" ]
+    return: [ "uint", "error" ]
+  - name: UserMetrics
+    return: [ "*types.UserMetrics", "error" ]
+
 rdbms:
   alias: usr
   table: users

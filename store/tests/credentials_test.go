@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"github.com/cortezaproject/corteza-server/store"
 	"github.com/cortezaproject/corteza-server/system/types"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/stretchr/testify/require"
@@ -9,7 +10,7 @@ import (
 	"time"
 )
 
-func testCredentials(t *testing.T, s credentialsStore) {
+func testCredentials(t *testing.T, s store.Credentials) {
 	var (
 		ctx         = context.Background()
 		req         = require.New(t)

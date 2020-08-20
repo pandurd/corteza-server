@@ -5,12 +5,13 @@ import (
 	"github.com/cortezaproject/corteza-server/compose/types"
 	"github.com/cortezaproject/corteza-server/pkg/id"
 	"github.com/cortezaproject/corteza-server/pkg/rh"
+	"github.com/cortezaproject/corteza-server/store"
 	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
 )
 
-func testComposeModules(t *testing.T, s composeModulesStore) {
+func testComposeModules(t *testing.T, s store.ComposeModules) {
 	var (
 		ctx = context.Background()
 		req = require.New(t)

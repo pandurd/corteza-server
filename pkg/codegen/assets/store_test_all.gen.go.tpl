@@ -8,15 +8,15 @@ package tests
 
 import (
 	"context"
+	"github.com/cortezaproject/corteza-server/store"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
 
-func testAllGenerated(t *testing.T, all interface{}) {
+func testAllGenerated(t *testing.T, s store.StoreInterfaces) {
 {{ range . }}
 	// Run generated tests for {{ .Types.Base }}
 	t.Run({{ printf "%q" .Types.Base }}, func(t *testing.T) {
-		var s = all.({{ unpubIdent .Types.Plural }}Store)
 		require.New(t).NoError(s.Truncate{{ pubIdent .Types.Plural }}(context.Background()))
 		test{{ pubIdent .Types.Base }}(t, s)
 	})

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/Masterminds/squirrel"
 	"github.com/cortezaproject/corteza-server/pkg/actionlog"
+	"github.com/cortezaproject/corteza-server/pkg/filter"
 	"github.com/cortezaproject/corteza-server/store"
 	"strings"
 )
@@ -42,8 +43,8 @@ func (s Store) SearchActionlogs(ctx context.Context, f actionlog.Filter) (action
 	// {search: {disableSorting:true}}
 	//
 	// We still need to sort the results by primary key for paging purposes
-	sort := store.SortExprSet{
-		&store.SortExpr{Column: "id", Descending: true},
+	sort := filter.SortExprSet{
+		&filter.SortExpr{Column: "id", Descending: true},
 	}
 
 	if scap == 0 {
@@ -61,7 +62,7 @@ func (s Store) SearchActionlogs(ctx context.Context, f actionlog.Filter) (action
 		// The value for cursor is used and set directly from/to the filter!
 		//
 		// It returns total number of fetched pages and modifies PageCursor value for paging
-		fetchPage = func(cursor *store.PagingCursor, limit uint) (fetched uint, err error) {
+		fetchPage = func(cursor *filter.PagingCursor, limit uint) (fetched uint, err error) {
 			var (
 				res *actionlog.Action
 
@@ -193,7 +194,7 @@ func (s Store) SearchActionlogs(ctx context.Context, f actionlog.Filter) (action
 // CreateActionlog creates one or more rows in actionlog table
 func (s Store) CreateActionlog(ctx context.Context, rr ...*actionlog.Action) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Insert(s.ActionlogTable()).SetMap(s.internalActionlogEncoder(res)))
+		err = s.Exec(ctx, s.InsertBuilder(s.ActionlogTable()).SetMap(s.internalActionlogEncoder(res)))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -204,13 +205,11 @@ func (s Store) CreateActionlog(ctx context.Context, rr ...*actionlog.Action) (er
 
 // UpdateActionlog updates one or more existing rows in actionlog
 func (s Store) UpdateActionlog(ctx context.Context, rr ...*actionlog.Action) error {
-	return s.config.ErrorHandler(s.PartialUpdateActionlog(ctx, nil, rr...))
+	return s.config.ErrorHandler(s.PartialActionlogUpdate(ctx, nil, rr...))
 }
 
-// PartialUpdateActionlog updates one or more existing rows in actionlog
-//
-// It wraps the update into transaction and can perform partial update by providing list of updatable columns
-func (s Store) PartialUpdateActionlog(ctx context.Context, onlyColumns []string, rr ...*actionlog.Action) (err error) {
+// PartialActionlogUpdate updates one or more existing rows in actionlog
+func (s Store) PartialActionlogUpdate(ctx context.Context, onlyColumns []string, rr ...*actionlog.Action) (err error) {
 	for _, res := range rr {
 		err = s.ExecUpdateActionlogs(
 			ctx,
@@ -227,7 +226,7 @@ func (s Store) PartialUpdateActionlog(ctx context.Context, onlyColumns []string,
 // RemoveActionlog removes one or more rows from actionlog table
 func (s Store) RemoveActionlog(ctx context.Context, rr ...*actionlog.Action) (err error) {
 	for _, res := range rr {
-		err = ExecuteSqlizer(ctx, s.DB(), s.Delete(s.ActionlogTable("alg")).Where(squirrel.Eq{s.preprocessColumn("alg.id", ""): s.preprocessValue(res.ID, "")}))
+		err = s.Exec(ctx, s.DeleteBuilder(s.ActionlogTable("alg")).Where(squirrel.Eq{s.preprocessColumn("alg.id", ""): s.preprocessValue(res.ID, "")}))
 		if err != nil {
 			return s.config.ErrorHandler(err)
 		}
@@ -238,17 +237,17 @@ func (s Store) RemoveActionlog(ctx context.Context, rr ...*actionlog.Action) (er
 
 // RemoveActionlogByID removes row from the actionlog table
 func (s Store) RemoveActionlogByID(ctx context.Context, ID uint64) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Delete(s.ActionlogTable("alg")).Where(squirrel.Eq{s.preprocessColumn("alg.id", ""): s.preprocessValue(ID, "")})))
+	return s.config.ErrorHandler(s.Exec(ctx, s.DeleteBuilder(s.ActionlogTable("alg")).Where(squirrel.Eq{s.preprocessColumn("alg.id", ""): s.preprocessValue(ID, "")})))
 }
 
 // TruncateActionlogs removes all rows from the actionlog table
 func (s Store) TruncateActionlogs(ctx context.Context) error {
-	return s.config.ErrorHandler(Truncate(ctx, s.DB(), s.ActionlogTable()))
+	return s.config.ErrorHandler(s.Truncate(ctx, s.ActionlogTable()))
 }
 
 // ExecUpdateActionlogs updates all matched (by cnd) rows in actionlog with given data
 func (s Store) ExecUpdateActionlogs(ctx context.Context, cnd squirrel.Sqlizer, set store.Payload) error {
-	return s.config.ErrorHandler(ExecuteSqlizer(ctx, s.DB(), s.Update(s.ActionlogTable("alg")).Where(cnd).SetMap(set)))
+	return s.config.ErrorHandler(s.Exec(ctx, s.UpdateBuilder(s.ActionlogTable("alg")).Where(cnd).SetMap(set)))
 }
 
 // ActionlogLookup prepares Actionlog query and executes it,
@@ -283,7 +282,7 @@ func (s Store) internalActionlogRowScanner(row rowScanner, err error) (*actionlo
 
 // QueryActionlogs returns squirrel.SelectBuilder with set table and all columns
 func (s Store) QueryActionlogs() squirrel.SelectBuilder {
-	return s.Select(s.ActionlogTable("alg"), s.ActionlogColumns("alg")...)
+	return s.SelectBuilder(s.ActionlogTable("alg"), s.ActionlogColumns("alg")...)
 }
 
 // ActionlogTable name of the db table
@@ -331,9 +330,9 @@ func (s Store) internalActionlogEncoder(res *actionlog.Action) store.Payload {
 	return s.encodeActionlog(res)
 }
 
-func (s Store) collectActionlogCursorValues(res *actionlog.Action, cc ...string) *store.PagingCursor {
+func (s Store) collectActionlogCursorValues(res *actionlog.Action, cc ...string) *filter.PagingCursor {
 	var (
-		cursor = &store.PagingCursor{}
+		cursor = &filter.PagingCursor{}
 
 		hasUnique bool
 

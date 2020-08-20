@@ -16,14 +16,13 @@ import (
 	"github.com/cortezaproject/corteza-server/pkg/ql"
 	"github.com/cortezaproject/corteza-server/pkg/rh"
 	"github.com/cortezaproject/corteza-server/store"
-	"github.com/jmoiron/sqlx"
 	"strings"
 )
 
 // SearchComposeRecords returns all matching rows
 //
 // This function calls convertComposeRecordFilter with the given
-// types.RecordFilter and expects to receive a working squirrel.SelectBuilder
+// types.RecordFilter and expects to receive a working squirrel.selectBuilder
 func (s Store) SearchComposeRecords(ctx context.Context, m *types.Module, f types.RecordFilter) (types.RecordSet, types.RecordFilter, error) {
 	q, err := s.convertComposeRecordFilter(m, f)
 	if err != nil {
@@ -179,41 +178,37 @@ func (s Store) LookupComposeRecordByID(ctx context.Context, m *types.Module, id 
 }
 
 // CreateComposeRecord creates one or more rows in compose_record table
-func (s Store) CreateComposeRecord(ctx context.Context, m *types.Module, rr ...*types.Record) error {
+func (s Store) CreateComposeRecord(ctx context.Context, m *types.Module, rr ...*types.Record) (err error) {
 	if len(rr) == 0 {
 		return nil
 	}
 
-	return Tx(ctx, s.db, s.config, nil, func(db *sqlx.Tx) (err error) {
-		for _, res := range rr {
-			err = ExecuteSqlizer(ctx, s.DB(), s.Insert(s.ComposeRecordTable(m)).SetMap(s.ComposeRecordEnc(res)))
-			if err != nil {
-				return err
-			}
+	for _, res := range rr {
+		err = s.Exec(ctx, s.InsertBuilder(s.ComposeRecordTable(m)).SetMap(s.ComposeRecordEnc(res)))
+		if err != nil {
+			return err
 		}
+	}
 
-		return nil
-	})
+	return nil
 }
 
 // CreateComposeRecordValue creates one or more rows in compose_record_value table
 //
 // @this can probbably be merged with CreateComposeRecord
-func (s Store) CreateComposeRecordValue(ctx context.Context, m *types.Module, rr ...*types.RecordValue) error {
+func (s Store) CreateComposeRecordValue(ctx context.Context, m *types.Module, rr ...*types.RecordValue) (err error) {
 	if len(rr) == 0 {
 		return nil
 	}
 
-	return Tx(ctx, s.db, s.config, nil, func(db *sqlx.Tx) (err error) {
-		for _, res := range rr {
-			err = ExecuteSqlizer(ctx, s.DB(), s.Insert(s.ComposeRecordValueTable(m)).SetMap(s.ComposeRecordValueEnc(res)))
-			if err != nil {
-				return err
-			}
+	for _, res := range rr {
+		err = s.Exec(ctx, s.InsertBuilder(s.ComposeRecordValueTable(m)).SetMap(s.ComposeRecordValueEnc(res)))
+		if err != nil {
+			return err
 		}
+	}
 
-		return nil
-	})
+	return nil
 }
 
 // UpdateComposeRecord updates one or more existing rows in compose_record
@@ -231,24 +226,22 @@ func (s Store) UpdateComposeRecordValue(ctx context.Context, m *types.Module, rr
 // PartialUpdateComposeRecord updates one or more existing rows in compose_record
 //
 // It wraps the update into transaction and can perform partial update by providing list of updatable columns
-func (s Store) PartialUpdateComposeRecord(ctx context.Context, m *types.Module, onlyColumns []string, rr ...*types.Record) error {
+func (s Store) PartialUpdateComposeRecord(ctx context.Context, m *types.Module, onlyColumns []string, rr ...*types.Record) (err error) {
 	if len(rr) == 0 {
 		return nil
 	}
 
-	return Tx(ctx, s.db, s.config, nil, func(db *sqlx.Tx) (err error) {
-		for _, res := range rr {
-			err = s.ExecUpdateComposeRecords(
-				ctx, m,
-				squirrel.Eq{s.preprocessColumn("crc.id", ""): s.preprocessValue(res.ID, "")},
-				s.ComposeRecordEnc(res).Skip("id").Only(onlyColumns...))
-			if err != nil {
-				return err
-			}
+	for _, res := range rr {
+		err = s.ExecUpdateComposeRecords(
+			ctx, m,
+			squirrel.Eq{s.preprocessColumn("crc.id", ""): s.preprocessValue(res.ID, "")},
+			s.ComposeRecordEnc(res).Skip("id").Only(onlyColumns...))
+		if err != nil {
+			return err
 		}
+	}
 
-		return nil
-	})
+	return nil
 }
 
 // PartialUpdateComposeRecordValue updates one or more existing rows in compose_record_value
@@ -256,102 +249,96 @@ func (s Store) PartialUpdateComposeRecord(ctx context.Context, m *types.Module, 
 // It wraps the update into transaction and can perform partial update by providing list of updatable columns
 //
 // @todo this can probably be merged with PartialUpdateComposeRecord
-func (s Store) PartialUpdateComposeRecordValue(ctx context.Context, m *types.Module, rr ...*types.RecordValue) error {
+func (s Store) PartialUpdateComposeRecordValue(ctx context.Context, m *types.Module, rr ...*types.RecordValue) (err error) {
 	if len(rr) == 0 {
 		return nil
 	}
 
-	return Tx(ctx, s.db, s.config, nil, func(db *sqlx.Tx) (err error) {
-		for _, res := range rr {
-			err = s.ExecUpdateComposeRecordValues(
-				ctx, m,
-				squirrel.Eq{s.preprocessColumn("crv.record_id", ""): s.preprocessValue(res.RecordID, ""),
-					s.preprocessColumn("crv.place", ""): s.preprocessValue(res.Place, ""),
-					s.preprocessColumn("crv.name", ""):  s.preprocessValue(res.Name, ""),
-				},
-				s.ComposeRecordValueEnc(res).Skip("record_id", "place", "name"))
-			if err != nil {
-				return err
-			}
+	for _, res := range rr {
+		err = s.ExecUpdateComposeRecordValues(
+			ctx, m,
+			squirrel.Eq{s.preprocessColumn("crv.record_id", ""): s.preprocessValue(res.RecordID, ""),
+				s.preprocessColumn("crv.place", ""): s.preprocessValue(res.Place, ""),
+				s.preprocessColumn("crv.name", ""):  s.preprocessValue(res.Name, ""),
+			},
+			s.ComposeRecordValueEnc(res).Skip("record_id", "place", "name"))
+		if err != nil {
+			return err
 		}
+	}
 
-		return nil
-	})
+	return nil
 }
 
 // RemoveComposeRecord removes one or more rows from compose_record table
-func (s Store) RemoveComposeRecord(ctx context.Context, m *types.Module, rr ...*types.Record) error {
+func (s Store) RemoveComposeRecord(ctx context.Context, m *types.Module, rr ...*types.Record) (err error) {
 	if len(rr) == 0 {
 		return nil
 	}
 
-	return Tx(ctx, s.db, s.config, nil, func(db *sqlx.Tx) (err error) {
-		for _, res := range rr {
-			err = ExecuteSqlizer(ctx, s.DB(), s.Delete(s.ComposeRecordTable(m, "crc")).Where(squirrel.Eq{s.preprocessColumn("crc.id", ""): s.preprocessValue(res.ID, "")}))
-			if err != nil {
-				return err
-			}
+	for _, res := range rr {
+		err = s.Exec(ctx, s.DeleteBuilder(s.ComposeRecordTable(m, "crc")).Where(squirrel.Eq{s.preprocessColumn("crc.id", ""): s.preprocessValue(res.ID, "")}))
+		if err != nil {
+			return err
 		}
+	}
 
-		return nil
-	})
+	return nil
 }
 
 // RemoveComposeRecordValue removes one or more rows from compose_record_value table
 //
 // @todo this can probably be merged with RemoveComposeRecord
-func (s Store) RemoveComposeRecordValue(ctx context.Context, m *types.Module, rr ...*types.RecordValue) error {
+func (s Store) RemoveComposeRecordValue(ctx context.Context, m *types.Module, rr ...*types.RecordValue) (err error) {
 	if len(rr) == 0 {
 		return nil
 	}
 
-	return Tx(ctx, s.db, s.config, nil, func(db *sqlx.Tx) (err error) {
-		for _, res := range rr {
-			err = ExecuteSqlizer(ctx, s.DB(), s.Delete(s.ComposeRecordValueTable(m, "crv")).Where(squirrel.Eq{s.preprocessColumn("crv.record_id", ""): s.preprocessValue(res.RecordID, ""),
-				s.preprocessColumn("crv.place", ""): s.preprocessValue(res.Place, ""),
-				s.preprocessColumn("crv.name", ""):  s.preprocessValue(res.Name, ""),
-			}))
-			if err != nil {
-				return err
-			}
+	for _, res := range rr {
+		err = s.Exec(ctx, s.DeleteBuilder(s.ComposeRecordValueTable(m, "crv")).Where(squirrel.Eq{s.preprocessColumn("crv.record_id", ""): s.preprocessValue(res.RecordID, ""),
+			s.preprocessColumn("crv.place", ""): s.preprocessValue(res.Place, ""),
+			s.preprocessColumn("crv.name", ""):  s.preprocessValue(res.Name, ""),
+		}))
+		if err != nil {
+			return err
 		}
+	}
 
-		return nil
-	})
+	return nil
 }
 
 // RemoveComposeRecordByID removes row from the compose_record table
 func (s Store) RemoveComposeRecordByID(ctx context.Context, m *types.Module, ID uint64) error {
-	return ExecuteSqlizer(ctx, s.DB(), s.Delete(s.ComposeRecordTable(m)).Where(squirrel.Eq{s.preprocessColumn("crc.id", ""): s.preprocessValue(ID, "")}))
+	return s.Exec(ctx, s.DeleteBuilder(s.ComposeRecordTable(m)).Where(squirrel.Eq{s.preprocessColumn("crc.id", ""): s.preprocessValue(ID, "")}))
 }
 
 // RemoveComposeRecordValueByRecordIDPlaceName removes row from the compose_record_value table
 //
 // @todo this can probably be merged with RemoveComposeRecordByID
 func (s Store) RemoveComposeRecordValueByRecordID(ctx context.Context, m *types.Module, recordID uint64, place int, name string) error {
-	return ExecuteSqlizer(ctx, s.DB(), s.Delete(s.ComposeRecordValueTable(m)).Where(squirrel.Eq{s.preprocessColumn("crv.record_id", ""): s.preprocessValue(recordID, "")}))
+	return s.Exec(ctx, s.DeleteBuilder(s.ComposeRecordValueTable(m)).Where(squirrel.Eq{s.preprocessColumn("crv.record_id", ""): s.preprocessValue(recordID, "")}))
 }
 
 // TruncateComposeRecords removes all rows from the compose_record table
 func (s Store) TruncateComposeRecords(ctx context.Context, m *types.Module) error {
-	return Truncate(ctx, s.DB(), s.ComposeRecordTable(m))
+	return s.Truncate(ctx, s.ComposeRecordTable(m))
 }
 
 // TruncateComposeRecordValues removes all rows from the compose_record_value table
 //
 // @todo this can probably be merged with TruncateComposeRecords
 func (s Store) TruncateComposeRecordValues(ctx context.Context, m *types.Module) error {
-	return Truncate(ctx, s.DB(), s.ComposeRecordValueTable(m))
+	return s.Truncate(ctx, s.ComposeRecordValueTable(m))
 }
 
 // ExecUpdateComposeRecords updates all matchhed (cnd) rows in compose_record with given data
 func (s Store) ExecUpdateComposeRecords(ctx context.Context, m *types.Module, cnd squirrel.Sqlizer, set store.Payload) error {
-	return ExecuteSqlizer(ctx, s.DB(), s.Update(s.ComposeRecordTable(m, "crc")).Where(cnd).SetMap(set))
+	return s.Exec(ctx, s.UpdateBuilder(s.ComposeRecordTable(m, "crc")).Where(cnd).SetMap(set))
 }
 
 // ExecUpdateComposeRecordValues updates all matchhed (cnd) rows in compose_record_value with given data
 func (s Store) ExecUpdateComposeRecordValues(ctx context.Context, m *types.Module, cnd squirrel.Sqlizer, set store.Payload) error {
-	return ExecuteSqlizer(ctx, s.DB(), s.Update(s.ComposeRecordValueTable(m, "crv")).Where(cnd).SetMap(set))
+	return s.Exec(ctx, s.UpdateBuilder(s.ComposeRecordValueTable(m, "crv")).Where(cnd).SetMap(set))
 }
 
 // ComposeRecordLookup prepares ComposeRecord query and executes it,
@@ -432,9 +419,9 @@ func (s Store) scanComposeRecordValue(row rowScanner, err error) (*types.RecordV
 	}
 }
 
-// QueryComposeRecords returns squirrel.SelectBuilder with set table and all columns
+// QueryComposeRecords returns squirrel.selectBuilder with set table and all columns
 func (s Store) QueryComposeRecords(m *types.Module) squirrel.SelectBuilder {
-	return s.Select(s.ComposeRecordTable(m, "crc"), s.ComposeRecordColumns("crc")...)
+	return s.SelectBuilder(s.ComposeRecordTable(m, "crc"), s.ComposeRecordColumns("crc")...)
 }
 
 // ComposeRecordTable name of the db table
@@ -486,9 +473,9 @@ func (Store) ComposeRecordEnc(res *types.Record) store.Payload {
 	}
 }
 
-// QueryComposeRecordValues returns squirrel.SelectBuilder with set table and all columns
+// QueryComposeRecordValues returns squirrel.selectBuilder with set table and all columns
 func (s Store) QueryComposeRecordValues(m *types.Module) squirrel.SelectBuilder {
-	return s.Select(s.ComposeRecordValueTable(m, "crv"), s.ComposeRecordValueColumns("crv")...)
+	return s.SelectBuilder(s.ComposeRecordValueTable(m, "crv"), s.ComposeRecordValueColumns("crv")...)
 }
 
 // ComposeRecordValueTable name of the db table

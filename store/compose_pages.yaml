@@ -23,15 +23,25 @@ fields:
   - { field: DeletedAt,                              sortable: true }
 
 lookups:
-  - fields: [ Handle ]
+  - fields: [ NamespaceID, Handle ]
     description: |-
-      searches for page chart by handle (case-insensitive)
+      searches for page by handle (case-insensitive)
+
+  - fields: [ NamespaceID, ModuleID ]
+    description: |-
+      searches for page by moduleID
 
   - fields: [ ID ]
     description: |-
       searches for compose page by ID
 
       It returns compose page even if deleted
+
+extra:
+  - name: ReorderComposePages
+    args: [ "namespaceID uint64", "parentID uint64", "pageIDs []uint64" ]
+    return: [ "error" ]
+
 
 rdbms:
   alias: cpg

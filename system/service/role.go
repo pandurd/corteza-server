@@ -7,6 +7,7 @@ import (
 	"github.com/cortezaproject/corteza-server/pkg/handle"
 	"github.com/cortezaproject/corteza-server/pkg/id"
 	"github.com/cortezaproject/corteza-server/pkg/permissions"
+	"github.com/cortezaproject/corteza-server/store"
 	"github.com/cortezaproject/corteza-server/system/service/event"
 	"github.com/cortezaproject/corteza-server/system/types"
 	"strconv"
@@ -23,10 +24,7 @@ type (
 
 		user UserService
 
-		store interface {
-			rolesStore
-			roleMembersStore
-		}
+		store store.Storable
 	}
 
 	roleAccessController interface {

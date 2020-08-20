@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"github.com/cortezaproject/corteza-server/store"
 	"github.com/cortezaproject/corteza-server/store/mysql"
 	"github.com/cortezaproject/corteza-server/store/pgsql"
 	"github.com/cortezaproject/corteza-server/store/sqlite"
@@ -10,12 +11,6 @@ import (
 	"go.uber.org/zap"
 	"os"
 	"testing"
-)
-
-type (
-	storeInterface interface {
-		storeGeneratedInterfaces
-	}
 )
 
 func init() {
@@ -27,7 +22,7 @@ func Test_Store(t *testing.T) {
 		suite struct {
 			name      string
 			dsnEnvKey string
-			init      func(ctx context.Context, dsn string) (storeInterface, error)
+			init      func(ctx context.Context, dsn string) (store.Storable, error)
 		}
 
 		upgrader interface {
@@ -42,12 +37,12 @@ func Test_Store(t *testing.T) {
 			{
 				name:      "MySQL",
 				dsnEnvKey: "RDBMS_MYSQL_DSN",
-				init:      func(ctx context.Context, dsn string) (storeInterface, error) { return mysql.New(ctx, dsn) },
+				init:      func(ctx context.Context, dsn string) (store.Storable, error) { return mysql.New(ctx, dsn) },
 			},
 			{
 				name:      "PostgreSQL",
 				dsnEnvKey: "RDBMS_PGSQL_DSN",
-				init:      func(ctx context.Context, dsn string) (storeInterface, error) { return pgsql.New(ctx, dsn) },
+				init:      func(ctx context.Context, dsn string) (store.Storable, error) { return pgsql.New(ctx, dsn) },
 			},
 			{
 				name:      "CockroachDB",
@@ -57,7 +52,7 @@ func Test_Store(t *testing.T) {
 			{
 				name:      "SQLite",
 				dsnEnvKey: "RDBMS_SQLITE_DSN",
-				init:      func(ctx context.Context, dsn string) (storeInterface, error) { return sqlite.New(ctx, dsn) },
+				init:      func(ctx context.Context, dsn string) (store.Storable, error) { return sqlite.New(ctx, dsn) },
 			},
 			{
 				name:      "InMemory",

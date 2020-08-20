@@ -1,7 +1,7 @@
 package types
 
 import (
-	"github.com/cortezaproject/corteza-server/store"
+	"github.com/cortezaproject/corteza-server/pkg/filter"
 	"time"
 
 	"github.com/jmoiron/sqlx/types"
@@ -40,8 +40,8 @@ type (
 		Check func(*Module) (bool, error) `json:"-"`
 
 		// Standard helpers for paging and sorting
-		store.Sorting
-		store.Paging
+		filter.Sorting
+		filter.Paging
 	}
 )
 
