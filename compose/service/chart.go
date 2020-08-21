@@ -8,7 +8,7 @@ import (
 	"github.com/cortezaproject/corteza-server/pkg/handle"
 	"github.com/cortezaproject/corteza-server/pkg/id"
 	"github.com/cortezaproject/corteza-server/pkg/permissions"
-	. "github.com/cortezaproject/corteza-server/store"
+	"github.com/cortezaproject/corteza-server/store"
 )
 
 type (
@@ -16,7 +16,7 @@ type (
 		ctx       context.Context
 		actionlog actionlog.Recorder
 		ac        chartAccessController
-		store     Storable
+		store     store.Storable
 	}
 
 	chartAccessController interface {
@@ -60,30 +60,7 @@ func (svc chart) With(ctx context.Context) ChartService {
 	}
 }
 
-func (svc chart) FindByID(namespaceID, chartID uint64) (c *types.Chart, err error) {
-	return svc.lookup(namespaceID, func(aProps *chartActionProps) (*types.Chart, error) {
-		if chartID == 0 {
-			return nil, ChartErrInvalidID()
-		}
-
-		aProps.chart.ID = chartID
-		return svc.store.LookupComposeChartByID(svc.ctx, chartID)
-	})
-}
-
-func (svc chart) FindByHandle(namespaceID uint64, h string) (c *types.Chart, err error) {
-	return svc.lookup(namespaceID, func(aProps *chartActionProps) (*types.Chart, error) {
-		if !handle.IsValid(h) {
-			return nil, ChartErrInvalidHandle()
-		}
-
-		aProps.chart.Handle = h
-		return svc.store.LookupComposeChartByNamespaceIDHandle(svc.ctx, namespaceID, h)
-	})
-}
-
-// search fn() orchestrates charts search, namespace preload and check
-func (svc chart) search(filter types.ChartFilter) (set types.ChartSet, f types.ChartFilter, err error) {
+func (svc chart) Find(filter types.ChartFilter) (set types.ChartSet, f types.ChartFilter, err error) {
 	var (
 		aProps = &chartActionProps{filter: &filter}
 	)
@@ -104,7 +81,7 @@ func (svc chart) search(filter types.ChartFilter) (set types.ChartSet, f types.C
 			aProps.setNamespace(ns)
 		}
 
-		if set, f, err = SearchComposeCharts(svc.ctx, svc.store, filter); err != nil {
+		if set, f, err = store.SearchComposeCharts(svc.ctx, svc.store, filter); err != nil {
 			return err
 		}
 
@@ -114,8 +91,26 @@ func (svc chart) search(filter types.ChartFilter) (set types.ChartSet, f types.C
 	return set, f, svc.recordAction(svc.ctx, aProps, ChartActionSearch, err)
 }
 
-func (svc chart) Find(filter types.ChartFilter) (set types.ChartSet, f types.ChartFilter, err error) {
-	return svc.search(filter)
+func (svc chart) FindByID(namespaceID, chartID uint64) (c *types.Chart, err error) {
+	return svc.lookup(namespaceID, func(aProps *chartActionProps) (*types.Chart, error) {
+		if chartID == 0 {
+			return nil, ChartErrInvalidID()
+		}
+
+		aProps.chart.ID = chartID
+		return svc.store.LookupComposeChartByID(svc.ctx, chartID)
+	})
+}
+
+func (svc chart) FindByHandle(namespaceID uint64, h string) (c *types.Chart, err error) {
+	return svc.lookup(namespaceID, func(aProps *chartActionProps) (*types.Chart, error) {
+		if !handle.IsValid(h) {
+			return nil, ChartErrInvalidHandle()
+		}
+
+		aProps.chart.Handle = h
+		return svc.store.LookupComposeChartByNamespaceIDHandle(svc.ctx, namespaceID, h)
+	})
 }
 
 func (svc chart) Create(new *types.Chart) (*types.Chart, error) {
@@ -145,7 +140,7 @@ func (svc chart) Create(new *types.Chart) (*types.Chart, error) {
 		new.UpdatedAt = nil
 		new.DeletedAt = nil
 
-		if err = svc.UniqueCheck(new); err != nil {
+		if err = svc.uniqueCheck(new); err != nil {
 			return err
 		}
 
@@ -178,15 +173,17 @@ func (svc chart) lookup(namespaceID uint64, lookup func(*chartActionProps) (*typ
 			aProps.setNamespace(ns)
 		}
 
-		if c, err = lookup(aProps); errors.Is(err, ErrNotFound) {
+		if c, err = lookup(aProps); errors.Is(err, store.ErrNotFound) {
 			return ChartErrNotFound()
+		} else if err != nil {
+			return err
 		}
+
+		aProps.setChart(c)
 
 		if !svc.ac.CanReadChart(svc.ctx, c) {
 			return ChartErrNotAllowedToRead()
 		}
-
-		aProps.setChart(c)
 
 		return nil
 	}()
@@ -203,7 +200,7 @@ func (svc chart) updater(namespaceID, chartID uint64, action func(...*chartActio
 		err     error
 	)
 
-	err = Tx(svc.ctx, svc.store, func(s Storable) (err error) {
+	err = store.Tx(svc.ctx, svc.store, func(ctx context.Context, s store.Storable) (err error) {
 		ns, c, err = loadChart(svc.ctx, s, namespaceID, chartID)
 		if err != nil {
 			return
@@ -224,7 +221,7 @@ func (svc chart) updater(namespaceID, chartID uint64, action func(...*chartActio
 	return c, svc.recordAction(svc.ctx, aProps, action, err)
 }
 
-func (svc chart) UniqueCheck(c *types.Chart) (err error) {
+func (svc chart) uniqueCheck(c *types.Chart) (err error) {
 	if c.Handle != "" {
 		if e, _ := svc.store.LookupComposeChartByNamespaceIDHandle(svc.ctx, c.NamespaceID, c.Handle); e != nil && e.ID != c.ID {
 			return ChartErrHandleNotUnique()
@@ -244,7 +241,7 @@ func (svc chart) handleUpdate(upd *types.Chart) chartUpdateHandler {
 			return false, ChartErrInvalidHandle()
 		}
 
-		if err := svc.UniqueCheck(upd); err != nil {
+		if err := svc.uniqueCheck(upd); err != nil {
 			return false, err
 		}
 
@@ -280,7 +277,7 @@ func (svc chart) handleUndelete(ctx context.Context, ns *types.Namespace, c *typ
 	}
 
 	if c.DeletedAt == nil {
-		// chart already deleted
+		// chart not deleted
 		return false, nil
 	}
 
@@ -288,13 +285,13 @@ func (svc chart) handleUndelete(ctx context.Context, ns *types.Namespace, c *typ
 	return true, nil
 }
 
-func loadChart(ctx context.Context, s Storable, namespaceID, chartID uint64) (ns *types.Namespace, c *types.Chart, err error) {
+func loadChart(ctx context.Context, s store.Storable, namespaceID, chartID uint64) (ns *types.Namespace, c *types.Chart, err error) {
 	if chartID == 0 {
 		return nil, nil, ChartErrInvalidID()
 	}
 
 	if ns, err = loadNamespace(ctx, s, namespaceID); err == nil {
-		if c, err = LookupComposeChartByID(ctx, s, chartID); errors.Is(err, ErrNotFound) {
+		if c, err = store.LookupComposeChartByID(ctx, s, chartID); errors.Is(err, store.ErrNotFound) {
 			err = ChartErrNotFound()
 		}
 	}
@@ -309,21 +306,4 @@ func loadChart(ctx context.Context, s Storable, namespaceID, chartID uint64) (ns
 	}
 
 	return
-}
-
-func loadNamespace(ctx context.Context, s Storable, namespaceID uint64) (ns *types.Namespace, err error) {
-	if namespaceID == 0 {
-		return nil, ChartErrInvalidNamespaceID()
-	}
-
-	if ns, err = LookupComposeNamespaceByID(ctx, s, namespaceID); errors.Is(err, ErrNotFound) {
-		return nil, NamespaceErrNotFound()
-	}
-
-	return
-}
-
-// trim1st removes 1st param and returns only error
-func trim1st(_ interface{}, err error) error {
-	return err
 }

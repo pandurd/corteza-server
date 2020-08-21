@@ -58,6 +58,11 @@ func (n Namespace) DynamicRoles(userID uint64) []uint64 {
 	return nil
 }
 
+func (n Namespace) Clone() *Namespace {
+	c := &n
+	return c
+}
+
 // FindByHandle finds namespace by it's handle/slug
 func (set NamespaceSet) FindByHandle(handle string) *Namespace {
 	for i := range set {

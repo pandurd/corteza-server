@@ -54,6 +54,12 @@ func (m Module) DynamicRoles(userID uint64) []uint64 {
 	return nil
 }
 
+func (m Module) Clone() *Module {
+	c := &m
+	c.Fields = m.Fields.Clone()
+	return c
+}
+
 // FindByHandle finds module by it's handle
 func (set ModuleSet) FindByHandle(handle string) *Module {
 	for i := range set {

@@ -219,3 +219,8 @@ func nowPtr() *time.Time {
 	now := time.Now()
 	return &now
 }
+
+// trim1st removes 1st param and returns only error
+func trim1st(_ interface{}, err error) error {
+	return err
+}

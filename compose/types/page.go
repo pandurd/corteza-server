@@ -83,6 +83,11 @@ func (p Page) DynamicRoles(userID uint64) []uint64 {
 	return nil
 }
 
+func (m Page) Clone() *Page {
+	c := &m
+	return c
+}
+
 // FindByHandle finds page by it's handle
 func (set PageSet) FindByHandle(handle string) *Page {
 	for i := range set {
